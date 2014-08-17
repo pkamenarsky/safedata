@@ -21,11 +21,20 @@
 --
 module Data.SafeCopy.SafeCopy where
 
+import qualified Data.ByteString as BS
+import qualified Data.Serialize.Builder as B
+import Data.Monoid
 import Data.Serialize
 
 import Control.Monad
 import Data.Int (Int32)
 import Data.List
+
+class Monoid a => BuilderS a where
+  cstrB :: String -> BS.ByteString -> a
+
+instance BuilderS B.Builder where
+  cstrB _ = B.fromByteString
 
 -- | The central mechanism for dealing with version control.
 --
