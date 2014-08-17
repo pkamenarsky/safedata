@@ -27,6 +27,8 @@ import Data.Monoid
 import Data.Serialize
 
 import Control.Monad
+import Control.Monad.Identity
+import Control.Monad.Writer
 import Data.Int (Int32)
 import Data.List
 
@@ -35,6 +37,8 @@ class Monoid a => BuilderS a where
 
 instance BuilderS B.Builder where
   cstrB _ = B.fromByteString
+
+type PutS a = WriterT (BuilderS a) Identity ()
 
 -- | The central mechanism for dealing with version control.
 --
