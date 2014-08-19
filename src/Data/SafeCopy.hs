@@ -93,19 +93,19 @@ module Data.SafeCopy
     , Version
 
       -- * Template haskell functions
-    , deriveSafeCopy
-    , deriveSafeCopyIndexedType
-    , deriveSafeCopySimple
-    , deriveSafeCopySimpleIndexedType
-    , deriveSafeCopyHappstackData
-    , deriveSafeCopyHappstackDataIndexedType
-
+--     , deriveSafeCopy
+--     , deriveSafeCopyIndexedType
+--     , deriveSafeCopySimple
+--     , deriveSafeCopySimpleIndexedType
+--     , deriveSafeCopyHappstackData
+--     , deriveSafeCopyHappstackDataIndexedType
+-- 
       -- * Rarely used functions
     , getSafeGet
     , getSafePut
     , primitive
     ) where
 
-import Data.SafeCopy.Instances ()
+-- import Data.SafeCopy.Instances ()
 import Data.SafeCopy.SafeCopy
-import Data.SafeCopy.Derive
+-- import Data.SafeCopy.Derive

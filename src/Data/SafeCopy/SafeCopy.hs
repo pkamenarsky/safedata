@@ -113,7 +113,7 @@ class SafeCopy a where
     -- | This method defines how a value should be parsed without worrying about
     --   previous versions or migrations. This function cannot be used directly.
     --   One should use 'safeGet', instead.
-    putCopy  :: a -> Contained Put
+    putCopy  :: Monoid b => a -> Contained (PutS b)
 
     -- | Internal function that should not be overrided.
     --   @Consistent@ iff the version history is consistent
@@ -141,8 +141,8 @@ class SafeCopy a where
     default getCopy :: Serialize a => Contained (Get a)
     getCopy = contain get
 
-    default putCopy :: Serialize a => a -> Contained Put
-    putCopy = contain . put
+    default putCopy :: (Serialize a, Monoid b) => a -> Contained (PutS b)
+    putCopy = undefined -- contain . put
 #endif
 
 
@@ -209,14 +209,14 @@ getSafeGet
 -- | Serialize a data type by first writing out its version tag. This is much
 --   simpler than the corresponding 'safeGet' since previous versions don't
 --   come into play.
-safePut :: SafeCopy a => a -> Put
+safePut :: (SafeCopy a, Monoid b) => a -> PutS b
 safePut a
     = do putter <- getSafePut
          putter a
 
 -- | Serialize the version tag and return the associated putter. This is useful
 --   when serializing multiple values with the same version. See 'getSafeGet'.
-getSafePut :: forall a. SafeCopy a => PutM (a -> Put)
+-- getSafePut :: (SafeCopy a, Monoid b) => WriterT (a -> PutS b) Identity ()
 getSafePut
     = checkConsistency proxy $
       case kindFromProxy proxy of
@@ -272,9 +272,11 @@ instance Num (Version a) where
     signum (Version a) = Version (signum a)
     fromInteger i = Version (fromInteger i)
 
+{-
 instance Serialize (Version a) where
     get = liftM Version get
     put = put . unVersion
+-}
 
 -------------------------------------------------
 -- Container type to control the access to the
