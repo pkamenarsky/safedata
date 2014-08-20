@@ -1,5 +1,6 @@
 {-# LANGUAGE GADTs, TypeFamilies, FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 {-# LANGUAGE CPP #-}
 #ifdef DEFAULT_SIGNATURES
@@ -108,7 +109,7 @@ class SafeCopy a where
     -- | This method defines how a value should be parsed without also worrying
     --   about writing out the version tag. This function cannot be used directly.
     --   One should use 'safeGet', instead.
-    getCopy  :: Contained (Get a)
+    -- getCopy  :: Contained (Get a)
 
     -- | This method defines how a value should be parsed without worrying about
     --   previous versions or migrations. This function cannot be used directly.
@@ -137,6 +138,7 @@ class SafeCopy a where
     errorTypeName :: Proxy a -> String
     errorTypeName _ = "<unkown type>"
 
+{-
 #ifdef DEFAULT_SIGNATURES
     default getCopy :: Serialize a => Contained (Get a)
     getCopy = contain get
@@ -144,8 +146,10 @@ class SafeCopy a where
     default putCopy :: (Serialize a, Monoid b) => a -> Contained (PutS b)
     putCopy = undefined -- contain . put
 #endif
+-}
 
 
+{-
 -- constructGetterFromVersion :: SafeCopy a => Version a -> Kind (MigrateFrom (Reverse a)) -> Get (Get a)
 constructGetterFromVersion :: SafeCopy a => Version a -> Kind a -> Either String (Get a)
 constructGetterFromVersion diskVersion orig_kind =
@@ -205,25 +209,36 @@ getSafeGet
                           Right getter -> return getter
                           Left msg     -> fail msg
     where proxy = Proxy :: Proxy a
+-}
 
 -- | Serialize a data type by first writing out its version tag. This is much
 --   simpler than the corresponding 'safeGet' since previous versions don't
 --   come into play.
+{-
 safePut :: (SafeCopy a, Monoid b) => a -> PutS b
 safePut a
     = do putter <- getSafePut
          putter a
+-}
 
 -- | Serialize the version tag and return the associated putter. This is useful
 --   when serializing multiple values with the same version. See 'getSafeGet'.
--- getSafePut :: (SafeCopy a, Monoid b) => WriterT (a -> PutS b) Identity ()
+--getSafePut :: (SafeCopy a, Monoid b) => WriterT (a -> PutS b) Identity ()
+{-
 getSafePut
     = checkConsistency proxy $
       case kindFromProxy proxy of
         Primitive -> return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
-        _         -> do put (versionFromProxy proxy)
+        _         -> do tell (versionFromProxy proxy)
                         return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
     where proxy = Proxy :: Proxy a
+-}
+
+sfPut :: (BuilderS a, Monoid a) => WriterT a Identity ()
+sfPut = do
+  tell $ cstrB "version" (encode (undefined :: Version Int))
+  tell $ cstrB "version" (encode (undefined :: Version Int))
+  return ()
 
 -- | The extended_base kind lets the system know that there is
 --   at least one future version of this type.
@@ -272,11 +287,9 @@ instance Num (Version a) where
     signum (Version a) = Version (signum a)
     fromInteger i = Version (fromInteger i)
 
-{-
 instance Serialize (Version a) where
     get = liftM Version get
     put = put . unVersion
--}
 
 -------------------------------------------------
 -- Container type to control the access to the
