@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
 
 {-# LANGUAGE CPP #-}
 #ifdef DEFAULT_SIGNATURES
@@ -35,16 +36,30 @@ import Control.Monad.Writer
 import Data.Int (Int32)
 import Data.List
 
+{-
+sfPutD :: BuilderD  => WriterT a Identity ()
+sfPutD = do
+  tell $ cstr "version" (undefined :: Version Int)
+  tell $ cstr "version" (undefined :: Version Int)
+  return ()
+-}
+
+-- class Monoid m => BuilderS m a | a -> m where
 class Monoid m => BuilderS m a where
   cstr :: String -> a -> m
 
-{-
+data Value = Int | Float | Double -- | etc
+
+class Monoid m => BuilderV m where
+  cstrV :: String -> Value -> m
+
 instance Serialize a => BuilderS B.Builder a where
   cstr _ = B.fromByteString . encode
--}
 
+{-
 instance (Serialize a, Monoid m) => BuilderS m a where
   cstr _ = undefined
+-}
 
 type PutS a = WriterT a Identity ()
 
@@ -241,11 +256,19 @@ getSafePut
     where proxy = Proxy :: Proxy a
 -}
 
+{-
 sfPut :: (BuilderS a b, Monoid a) => WriterT a Identity ()
 -- sfPut :: WriterT B.Builder Identity ()
 sfPut = do
   tell $ cstr "version" (undefined :: Version Int)
   tell $ cstr "version" (undefined :: Version Int)
+  return ()
+-}
+
+sfPutV :: (BuilderV a, Monoid a) => WriterT a Identity ()
+sfPutV = do
+  tell $ cstrV "version" Int
+  tell $ cstrV "version" Int
   return ()
 
 -- sfPutB = B.toByteString $ runIdentity $ execWriterT sfPut
