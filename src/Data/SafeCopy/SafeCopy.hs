@@ -37,7 +37,7 @@ import Data.Int (Int32)
 import Data.List
 
 {-
-sfPutD :: BuilderD  => WriterT a Identity ()
+sfPutD :: BuilderS => WriterT a Identity ()
 sfPutD = do
   tell $ cstr "version" (undefined :: Version Int)
   tell $ cstr "version" (undefined :: Version Int)
@@ -136,7 +136,7 @@ class SafeCopy a where
     -- | This method defines how a value should be parsed without worrying about
     --   previous versions or migrations. This function cannot be used directly.
     --   One should use 'safeGet', instead.
-    putCopy  :: Monoid b => a -> Contained (PutS b)
+    putCopy  :: a -> Contained (PutS m)
 
     -- | Internal function that should not be overrided.
     --   @Consistent@ iff the version history is consistent
@@ -255,6 +255,9 @@ getSafePut
                         return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
     where proxy = Proxy :: Proxy a
 -}
+
+test :: B.Builder
+test = cstr "version" (undefined :: Version Int)
 
 {-
 sfPut :: (BuilderS a b, Monoid a) => WriterT a Identity ()
