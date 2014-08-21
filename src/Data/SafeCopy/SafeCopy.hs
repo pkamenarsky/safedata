@@ -1,6 +1,8 @@
 {-# LANGUAGE GADTs, TypeFamilies, FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 {-# LANGUAGE CPP #-}
 #ifdef DEFAULT_SIGNATURES
@@ -33,13 +35,18 @@ import Control.Monad.Writer
 import Data.Int (Int32)
 import Data.List
 
-class Monoid a => BuilderS a where
-  cstrB :: String -> BS.ByteString -> a
+class Monoid m => BuilderS m a where
+  cstr :: String -> a -> m
 
-instance BuilderS B.Builder where
-  cstrB _ = B.fromByteString
+{-
+instance Serialize a => BuilderS B.Builder a where
+  cstr _ = B.fromByteString . encode
+-}
 
-type PutS a = WriterT (BuilderS a) Identity ()
+instance (Serialize a, Monoid m) => BuilderS m a where
+  cstr _ = undefined
+
+type PutS a = WriterT a Identity ()
 
 -- | The central mechanism for dealing with version control.
 --
@@ -234,11 +241,14 @@ getSafePut
     where proxy = Proxy :: Proxy a
 -}
 
-sfPut :: (BuilderS a, Monoid a) => WriterT a Identity ()
+sfPut :: (BuilderS a b, Monoid a) => WriterT a Identity ()
+-- sfPut :: WriterT B.Builder Identity ()
 sfPut = do
-  tell $ cstrB "version" (encode (undefined :: Version Int))
-  tell $ cstrB "version" (encode (undefined :: Version Int))
+  tell $ cstr "version" (undefined :: Version Int)
+  tell $ cstr "version" (undefined :: Version Int)
   return ()
+
+-- sfPutB = B.toByteString $ runIdentity $ execWriterT sfPut
 
 -- | The extended_base kind lets the system know that there is
 --   at least one future version of this type.
