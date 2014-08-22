@@ -53,8 +53,13 @@ data Value = Int | Float | Double -- | etc
 class Monoid m => BuilderV m where
   cstrV :: String -> Value -> m
 
+{-
 instance Serialize a => BuilderS B.Builder a where
   cstr _ = B.fromByteString . encode
+-}
+
+instance BuilderS B.Builder (Version a) where
+  cstr _ = undefined
 
 {-
 instance (Serialize a, Monoid m) => BuilderS m a where
@@ -136,7 +141,7 @@ class SafeCopy a where
     -- | This method defines how a value should be parsed without worrying about
     --   previous versions or migrations. This function cannot be used directly.
     --   One should use 'safeGet', instead.
-    putCopy  :: a -> Contained (PutS m)
+    putCopy  :: Monoid m => a -> Contained (PutS m)
 
     -- | Internal function that should not be overrided.
     --   @Consistent@ iff the version history is consistent
@@ -245,34 +250,30 @@ safePut a
 
 -- | Serialize the version tag and return the associated putter. This is useful
 --   when serializing multiple values with the same version. See 'getSafeGet'.
---getSafePut :: (SafeCopy a, Monoid b) => WriterT (a -> PutS b) Identity ()
-{-
-getSafePut
+getSafePut :: (SafeCopy a, Monoid b) => Proxy b -> WriterT b Identity (a -> PutS b)
+getSafePut pB
     = checkConsistency proxy $
-      case kindFromProxy proxy of
+      case (kindFromProxy proxy :: Kind a) of
         Primitive -> return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
-        _         -> do tell (versionFromProxy proxy)
+        _         -> do tell $ asProxyType (cstr "version" (versionFromProxy proxy)) pB
                         return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
     where proxy = Proxy :: Proxy a
--}
 
+{-
 test :: B.Builder
 test = cstr "version" (undefined :: Version Int)
 
-{-
-sfPut :: (BuilderS a b, Monoid a) => WriterT a Identity ()
--- sfPut :: WriterT B.Builder Identity ()
+sfPut :: (BuilderS a Int, Monoid a) => WriterT a Identity ()
 sfPut = do
-  tell $ cstr "version" (undefined :: Version Int)
-  tell $ cstr "version" (undefined :: Version Int)
-  return ()
--}
+  -- tell $ cstr "version" (undefined :: Version Int)
+  tell $ cstr "version" (5 :: Int)
 
 sfPutV :: (BuilderV a, Monoid a) => WriterT a Identity ()
 sfPutV = do
   tell $ cstrV "version" Int
   tell $ cstrV "version" Int
   return ()
+-}
 
 -- sfPutB = B.toByteString $ runIdentity $ execWriterT sfPut
 
