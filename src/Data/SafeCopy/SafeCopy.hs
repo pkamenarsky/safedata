@@ -34,14 +34,8 @@ import Control.Monad.Writer
 import Data.Int (Int32)
 import Data.List
 
--- class Monoid m => BuilderS m a | a -> m where
 class Monoid m => BuilderS m a where
   cstr :: String -> a -> m
-
-data Value = Int | Float | Double -- | etc
-
-class Monoid m => BuilderV m where
-  cstrV :: String -> Value -> m
 
 instance Serialize a => BuilderS B.Builder a where
   cstr _ = B.fromByteString . encode
