@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
+-- {-# LANGUAGE FunctionalDependencies #-}
 
 {-# LANGUAGE CPP #-}
 #ifdef DEFAULT_SIGNATURES
@@ -53,13 +53,13 @@ data Value = Int | Float | Double -- | etc
 class Monoid m => BuilderV m where
   cstrV :: String -> Value -> m
 
-{-
 instance Serialize a => BuilderS B.Builder a where
   cstr _ = B.fromByteString . encode
--}
 
+{-
 instance BuilderS B.Builder (Version a) where
   cstr _ = undefined
+-}
 
 {-
 instance (Serialize a, Monoid m) => BuilderS m a where
@@ -241,13 +241,13 @@ getSafeGet
 -- | Serialize a data type by first writing out its version tag. This is much
 --   simpler than the corresponding 'safeGet' since previous versions don't
 --   come into play.
-{-
-safePut :: (SafeCopy a, Monoid b) => a -> PutS b
-safePut a
-    = do putter <- getSafePut
-         putter a
--}
 
+safePut :: (SafeCopy a, BuilderS b (Version a)) => a -> PutS b
+safePut a
+    = do putter <- getSafePut (mkProxy a)
+         putter a
+
+{-
 -- | Serialize the version tag and return the associated putter. This is useful
 --   when serializing multiple values with the same version. See 'getSafeGet'.
 getSafePut :: (SafeCopy a, Monoid b) => Proxy b -> WriterT b Identity (a -> PutS b)
@@ -258,6 +258,16 @@ getSafePut pB
         _         -> do tell $ asProxyType (cstr "version" (versionFromProxy proxy)) pB
                         return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
     where proxy = Proxy :: Proxy a
+-}
+
+getSafePut :: (SafeCopy a, BuilderS b (Version a)) => Proxy a -> WriterT b Identity (a -> PutS b)
+getSafePut proxy = checkConsistency proxy $
+  case kindFromProxy proxy of
+    Primitive -> return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
+    _         -> do tell $ cstr "version" (versionFromProxy proxy)
+                    return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
+    -- where proxy = Proxy :: Proxy a
+
 
 {-
 test :: B.Builder
