@@ -1,9 +1,7 @@
 {-# LANGUAGE GADTs, TypeFamilies, FlexibleContexts #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
--- {-# LANGUAGE FunctionalDependencies #-}
 
 {-# LANGUAGE CPP #-}
 #ifdef DEFAULT_SIGNATURES
@@ -36,14 +34,6 @@ import Control.Monad.Writer
 import Data.Int (Int32)
 import Data.List
 
-{-
-sfPutD :: BuilderS => WriterT a Identity ()
-sfPutD = do
-  tell $ cstr "version" (undefined :: Version Int)
-  tell $ cstr "version" (undefined :: Version Int)
-  return ()
--}
-
 -- class Monoid m => BuilderS m a | a -> m where
 class Monoid m => BuilderS m a where
   cstr :: String -> a -> m
@@ -55,16 +45,6 @@ class Monoid m => BuilderV m where
 
 instance Serialize a => BuilderS B.Builder a where
   cstr _ = B.fromByteString . encode
-
-{-
-instance BuilderS B.Builder (Version a) where
-  cstr _ = undefined
--}
-
-{-
-instance (Serialize a, Monoid m) => BuilderS m a where
-  cstr _ = undefined
--}
 
 type PutS a = WriterT a Identity ()
 
@@ -138,9 +118,8 @@ class SafeCopy a where
     --   One should use 'safeGet', instead.
     -- getCopy  :: Contained (Get a)
 
-    -- | This method defines how a value should be parsed without worrying about
-    --   previous versions or migrations. This function cannot be used directly.
-    --   One should use 'safeGet', instead.
+    -- | This method defines how a value should be serialized.
+    --   One should use 'safePut', instead.
     putCopy  :: Monoid m => a -> Contained (PutS m)
 
     -- | Internal function that should not be overrided.
@@ -268,24 +247,6 @@ getSafePut proxy = checkConsistency proxy $
                     return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
     -- where proxy = Proxy :: Proxy a
 
-
-{-
-test :: B.Builder
-test = cstr "version" (undefined :: Version Int)
-
-sfPut :: (BuilderS a Int, Monoid a) => WriterT a Identity ()
-sfPut = do
-  -- tell $ cstr "version" (undefined :: Version Int)
-  tell $ cstr "version" (5 :: Int)
-
-sfPutV :: (BuilderV a, Monoid a) => WriterT a Identity ()
-sfPutV = do
-  tell $ cstrV "version" Int
-  tell $ cstrV "version" Int
-  return ()
--}
-
--- sfPutB = B.toByteString $ runIdentity $ execWriterT sfPut
 
 -- | The extended_base kind lets the system know that there is
 --   at least one future version of this type.
