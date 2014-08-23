@@ -114,7 +114,7 @@ class SafeCopy a where
 
     -- | This method defines how a value should be serialized.
     --   One should use 'safePut', instead.
-    putCopy  :: Monoid m => a -> Contained (PutS m)
+    putCopy  :: BuilderS m a => a -> Contained (PutS m)
 
     -- | Internal function that should not be overrided.
     --   @Consistent@ iff the version history is consistent
@@ -137,6 +137,10 @@ class SafeCopy a where
     -- Feel free to leave undefined in your instances.
     errorTypeName :: Proxy a -> String
     errorTypeName _ = "<unkown type>"
+
+instance SafeCopy String where
+  putCopy str = contain $ do
+    tell $ cstr "nothing" str
 
 {-
 #ifdef DEFAULT_SIGNATURES
@@ -215,7 +219,7 @@ getSafeGet
 --   simpler than the corresponding 'safeGet' since previous versions don't
 --   come into play.
 
-safePut :: (SafeCopy a, BuilderS b (Version a)) => a -> PutS b
+safePut :: (SafeCopy a, BuilderS b (Version a), BuilderS b a) => a -> PutS b
 safePut a
     = do putter <- getSafePut (mkProxy a)
          putter a
@@ -233,7 +237,7 @@ getSafePut pB
     where proxy = Proxy :: Proxy a
 -}
 
-getSafePut :: (SafeCopy a, BuilderS b (Version a)) => Proxy a -> WriterT b Identity (a -> PutS b)
+getSafePut :: (SafeCopy a, BuilderS b (Version a), BuilderS b a) => Proxy a -> WriterT b Identity (a -> PutS b)
 getSafePut proxy = checkConsistency proxy $
   case kindFromProxy proxy of
     Primitive -> return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
