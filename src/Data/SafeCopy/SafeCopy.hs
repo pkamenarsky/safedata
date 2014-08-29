@@ -34,19 +34,40 @@ import Control.Monad.Writer
 import Data.Int (Int32)
 import Data.List
 
+newtype BSS m = BSS { unBSS :: m } deriving Show
+newtype BSI m = BSI { unBSI :: m } deriving Show
+
+instance Monoid m => Monoid (BSS (BSI m)) where
+  mempty = BSS (BSI mempty)
+  (BSS (BSI x)) `mappend` (BSS (BSI y)) = BSS (BSI (x `mappend` y))
+
+wrap :: a -> Wrap a
+wrap = BSS . BSI
+
+unwrap :: Wrap a -> a
+unwrap = unBSI . unBSS
+
+type Wrap a = BSS (BSI a)
+
 class Monoid m => BuilderS m a where
-  cstr :: String -> a -> m
+  cstr :: a -> m
 
 instance Serialize a => BuilderS B.Builder a where
-  cstr _ = B.fromByteString . encode
+  cstr = B.fromByteString . encode
 
 type PutS a = WriterT a Identity ()
+
+class PrimVar a
+
+instance PrimVar Char
+instance PrimVar Int
+instance PrimVar String
 
 -- | The central mechanism for dealing with version control.
 --
 --   This type class specifies what data migrations can happen
 --   and how they happen.
-class SafeCopy (MigrateFrom a) => Migrate a where
+class SafeCopy (MigrateFrom a) m => Migrate a m where
     -- | This is the type we're extending. Each type capable of migration can
     --   only extend one other type.
     type MigrateFrom a
@@ -73,8 +94,8 @@ newtype Reverse a = Reverse { unReverse :: a }
 data Kind a where
     Primitive :: Kind a
     Base      :: Kind a
-    Extends   :: (Migrate a) => Proxy (MigrateFrom a) -> Kind a
-    Extended  :: (Migrate (Reverse a)) => Kind a -> Kind a
+    Extends   :: (Migrate a m) => Proxy (MigrateFrom a) -> Kind a
+    Extended  :: (Migrate (Reverse a) m) => Kind a -> Kind a
 
 isPrimitive :: Kind a -> Bool
 isPrimitive Primitive = True
@@ -90,7 +111,7 @@ newtype Prim a = Prim { getPrimitive :: a }
 --   even though 'getCopy' and 'putCopy' can't be used directly.
 --   To serialize/parse a data type using 'SafeCopy', see 'safeGet'
 --   and 'safePut'.
-class SafeCopy a where
+class Monoid m => SafeCopy a m where
     -- | The version of the type.
     --
     --   Only used as a key so it must be unique (this is checked at run-time)
@@ -114,7 +135,7 @@ class SafeCopy a where
 
     -- | This method defines how a value should be serialized.
     --   One should use 'safePut', instead.
-    putCopy  :: BuilderS m a => a -> Contained (PutS m)
+    putCopy  :: a -> Contained (PutS m)
 
     -- | Internal function that should not be overrided.
     --   @Consistent@ iff the version history is consistent
@@ -138,9 +159,17 @@ class SafeCopy a where
     errorTypeName :: Proxy a -> String
     errorTypeName _ = "<unkown type>"
 
+{-
 instance SafeCopy String where
   putCopy str = contain $ do
     tell $ cstr "nothing" str
+
+data Person = Person { name :: String, address :: String }
+
+instance SafeCopy Person where
+  putCopy person = contain $ do
+    tell $ cstr "name" (name person)
+-}
 
 {-
 #ifdef DEFAULT_SIGNATURES
@@ -219,7 +248,7 @@ getSafeGet
 --   simpler than the corresponding 'safeGet' since previous versions don't
 --   come into play.
 
-safePut :: (SafeCopy a, BuilderS b (Version a), BuilderS b a) => a -> PutS b
+safePut :: (Monoid m, SafeCopy a (Wrap m)) => a -> PutS b
 safePut a
     = do putter <- getSafePut (mkProxy a)
          putter a
@@ -237,23 +266,21 @@ getSafePut pB
     where proxy = Proxy :: Proxy a
 -}
 
-getSafePut :: (SafeCopy a, BuilderS b (Version a), BuilderS b a) => Proxy a -> WriterT b Identity (a -> PutS b)
+getSafePut :: (SafeCopy a (Wrap m), BuilderS m (Version a)) => Proxy a -> WriterT m Identity (a -> PutS m)
 getSafePut proxy = checkConsistency proxy $
   case kindFromProxy proxy of
     Primitive -> return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
     _         -> do tell $ cstr "version" (versionFromProxy proxy)
                     return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
-    -- where proxy = Proxy :: Proxy a
-
 
 -- | The extended_base kind lets the system know that there is
 --   at least one future version of this type.
-extended_extension :: (SafeCopy a, Migrate a, Migrate (Reverse a)) => Kind a
+extended_extension :: (SafeCopy a m, Migrate a m, Migrate (Reverse a) m) => Kind a
 extended_extension = Extended extension
 
 -- | The extended_base kind lets the system know that there is
 --   at least one future version of this type.
-extended_base :: (Migrate (Reverse a)) => Kind a
+extended_base :: (Migrate (Reverse a) m) => Kind a
 extended_base = Extended base
 
 -- | The extension kind lets the system know that there is
@@ -261,7 +288,7 @@ extended_base = Extended base
 --   can only extend a single other data type. However, it is
 --   perfectly fine to build chains of extensions. The migrations
 --   between each step is handled automatically.
-extension :: (SafeCopy a, Migrate a) => Kind a
+extension :: (SafeCopy a m, Migrate a m) => Kind a
 extension = Extends Proxy
 
 -- | The default kind. Does not extend any type.
@@ -322,7 +349,7 @@ data Profile a =
   , profileSupportedVersions :: [Int32]
   } deriving (Show)
 
-mkProfile :: SafeCopy a => Proxy a -> Profile a
+mkProfile :: SafeCopy a m => Proxy a -> Profile a
 mkProfile a_proxy =
   case computeConsistency a_proxy of
     NotConsistent msg -> InvalidProfile msg
@@ -334,11 +361,11 @@ mkProfile a_proxy =
 
 data Consistency a = Consistent | NotConsistent String
 
-availableVersions :: SafeCopy a => Proxy a -> [Int32]
+availableVersions :: SafeCopy a m => Proxy a -> [Int32]
 availableVersions a_proxy =
   worker True (kindFromProxy a_proxy)
   where
-    worker :: SafeCopy b => Bool -> Kind b -> [Int32]
+    worker :: SafeCopy b m => Bool -> Kind b -> [Int32]
     worker fwd b_kind =
       case b_kind of
         Primitive         -> []
@@ -347,19 +374,20 @@ availableVersions a_proxy =
         Extended sub_kind | fwd  -> worker False (getForwardKind sub_kind)
         Extended sub_kind -> worker False sub_kind
 
-getForwardKind :: (Migrate (Reverse a)) => Kind a -> Kind (MigrateFrom (Reverse a))
+getForwardKind :: (Migrate (Reverse a) m) => Kind a -> Kind (MigrateFrom (Reverse a))
 getForwardKind _ = kind
 
 -- Extend chains must end in a Base kind. Ending in a Primitive is an error.
-validChain :: SafeCopy a => Proxy a -> Bool
+validChain :: SafeCopy a (Wrap m) => Proxy a -> Bool
 validChain a_proxy =
   worker (kindFromProxy a_proxy)
   where
+    worker :: (SafeCopy (MigrateFrom a) (Wrap m)) => Kind a -> Bool
     worker Primitive         = True
     worker Base              = True
     worker (Extends b_proxy) = check (kindFromProxy b_proxy)
     worker (Extended a_kind)   = worker a_kind
-    check :: SafeCopy b => Kind b -> Bool
+    check :: SafeCopy b m => Kind b -> Bool
     check b_kind
               = case b_kind of
                   Primitive       -> False
@@ -368,14 +396,14 @@ validChain a_proxy =
                   Extended sub_kind   -> check sub_kind
 
 -- Verify that the SafeCopy instance is consistent.
-checkConsistency :: (SafeCopy a, Monad m) => Proxy a -> m b -> m b
+checkConsistency :: (SafeCopy a m', Monad m) => Proxy a -> m b -> m b
 checkConsistency proxy ks
     = case consistentFromProxy proxy of
         NotConsistent msg -> fail msg
         Consistent        -> ks
 
 {-# INLINE computeConsistency #-}
-computeConsistency :: SafeCopy a => Proxy a -> Consistency a
+computeConsistency :: SafeCopy a m => Proxy a -> Consistency a
 computeConsistency proxy
     -- Match a few common cases before falling through to the general case.
     -- This allows use to generate nearly all consistencies at compile-time.
@@ -404,19 +432,19 @@ proxyFromConsistency _ = Proxy
 proxyFromKind :: Kind a -> Proxy a
 proxyFromKind _ = Proxy
 
-consistentFromProxy :: SafeCopy a => Proxy a -> Consistency a
+consistentFromProxy :: SafeCopy a m => Proxy a -> Consistency a
 consistentFromProxy _ = internalConsistency
 
-versionFromProxy :: SafeCopy a => Proxy a -> Version a
+versionFromProxy :: SafeCopy a m => Proxy a -> Version a
 versionFromProxy _ = version
 
-versionFromKind :: (SafeCopy a) => Kind a -> Version a
+versionFromKind :: SafeCopy a m => Kind a -> Version a
 versionFromKind _ = version
 
-versionFromReverseKind :: (SafeCopy a, SafeCopy (MigrateFrom (Reverse a))) => Kind a -> Version (MigrateFrom (Reverse a))
+versionFromReverseKind :: (SafeCopy a m, SafeCopy (MigrateFrom (Reverse a)) m) => Kind a -> Version (MigrateFrom (Reverse a))
 versionFromReverseKind _ = version
 
-kindFromProxy :: SafeCopy a => Proxy a -> Kind a
+kindFromProxy :: SafeCopy a m => Proxy a -> Kind a
 kindFromProxy _ = kind
 
 -------------------------------------------------
