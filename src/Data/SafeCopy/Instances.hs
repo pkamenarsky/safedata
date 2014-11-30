@@ -54,6 +54,10 @@ instance SafeCopy a => SafeCopy (Prim a) where
     = contain $ unsafeUnPack (putCopy e)
 
 instance SafeCopy a => SafeCopy [a] where
+    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName1
+
+{-
+instance SafeCopy a => SafeCopy [a] where
     getCopy = contain $
               do n <- get
                  getSafeGet >>= replicateM n
@@ -63,6 +67,7 @@ instance SafeCopy a => SafeCopy [a] where
              getSafePut >>= forM_ lst
 
     errorTypeName = typeName1
+-}
 
 instance SafeCopy a => SafeCopy (Maybe a) where
     getCopy = contain $ do n <- get
@@ -152,39 +157,38 @@ instance (SafeCopy a, SafeCopy b, SafeCopy c, SafeCopy d, SafeCopy e, SafeCopy f
     putCopy (a,b,c,d,e,f,g) = contain $ safePut a >> safePut b >> safePut c >> safePut d >>
                                         safePut e >> safePut f >> safePut g
 
-
 instance SafeCopy Int where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Integer where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Float where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Double where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy L.ByteString where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy B.ByteString where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Char where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Word8 where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Word16 where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Word32 where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Word64 where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Ordering where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Int8 where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Int16 where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Int32 where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Int64 where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance (Integral a, SafeCopy a) => SafeCopy (Ratio a) where
     getCopy   = contain $ do n <- safeGet
                              d <- safeGet

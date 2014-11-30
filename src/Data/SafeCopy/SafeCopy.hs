@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, TypeFamilies, FlexibleContexts #-}
+{-# LANGUAGE GADTs, TypeFamilies, TypeSynonymInstances, FlexibleContexts, FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 {-# LANGUAGE CPP #-}
@@ -35,6 +35,7 @@ import           Control.Monad.Writer
 
 data Value = BValue Bool
            | CValue Char
+           | SValue String
            | DValue Double
            | FValue Float
            | IValue Int
@@ -53,11 +54,14 @@ data Value = BValue Bool
            | BSValue BS.ByteString
            | BSLValue BSL.ByteString
 
+           | AValue [Value]
+           deriving Show
+
 class Serialize t where
   put :: t -> Put
   get :: Get t
 
-newtype Builder = Builder [(String, Value)]
+newtype Builder = Builder [(String, Value)] deriving Show
 
 value :: Value -> Builder
 value v = Builder [("", v)]
@@ -74,8 +78,8 @@ data Get a = Get { unGet :: a }
 label :: String -> Get a -> Get a
 label = undefined
 
-putWord8 :: Get Word8
-putWord8 = undefined
+putWord8 :: Word8 -> Put
+putWord8 = put
 
 getWord8 :: Get Word8
 getWord8 = undefined
@@ -165,6 +169,21 @@ instance Serialize BS.ByteString where
 
 instance Serialize BSL.ByteString where
   put = tell . value . BSLValue
+  get = undefined
+
+instance SafeCopy a => Serialize [a] where
+  put vs = tell $ value $ mkAValue $ map snd vs'
+    where
+      Builder vs' = execWriter $ mapM safePut vs
+
+      getChr (CValue c) = c
+      getChr _          = error "Serialize [a]:getChr: internal error"
+
+      mkAValue :: [Value] -> Value
+      mkAValue []                = AValue []
+      mkAValue vs''@(CValue _:_) = SValue $ map getChr vs''
+      mkAValue vs''              = AValue vs''
+
   get = undefined
 
 
