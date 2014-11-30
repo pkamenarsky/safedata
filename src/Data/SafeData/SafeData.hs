@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, TypeFamilies, FlexibleContexts #-}
+{-# LANGUAGE GADTs, TypeFamilies, TypeSynonymInstances, FlexibleContexts, FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 {-# LANGUAGE CPP #-}
@@ -8,30 +8,61 @@
 
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Data.SafeCopy.SafeCopy
+-- Module      :  Data.SafeData.SafeData
 -- Copyright   :  PublicDomain
 --
 -- Maintainer  :  lemmih@gmail.com
 -- Portability :  non-portable (uses GHC extensions)
 --
--- SafeCopy extends the parsing and serialization capabilities of Data.Binary
+-- SafeData extends the parsing and serialization capabilities of Data.Binary
 -- to include nested version control. Nested version control means that you
 -- can change the defintion and binary format of a type nested deep within
 -- other types without problems.
 --
-module Data.SafeCopy.SafeCopy where
+module Data.SafeData.SafeData where
 
-import Data.Serialize
+import           Data.Int
+import           Data.List
+import           Data.Word
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BSL
 
-import Control.Monad
-import Data.Int (Int32)
-import Data.List
+import           Data.Typeable
+
+type Key  = String
+type Cstr = Word8
+
+data Value = BValue Bool
+           | CValue Char
+           | SValue String
+           | DValue Double
+           | FValue Float
+           | IValue Int
+           | I8Value Int8
+           | I16Value Int16
+           | I32Value Int32
+           | I64Value Int64
+           | BIValue Integer
+           | OrdValue Ordering
+           | WValue Word
+           | W8Value Word8
+           | W16Value Word16
+           | W32Value Word32
+           | W64Value Word64
+           | UValue ()
+           | BSValue BS.ByteString
+           | BSLValue BSL.ByteString
+
+           | Object String Cstr Int32 [(Key, Value)]
+           | Array [Value]
+           deriving Show
+
 
 -- | The central mechanism for dealing with version control.
 --
 --   This type class specifies what data migrations can happen
 --   and how they happen.
-class SafeCopy (MigrateFrom a) => Migrate a where
+class SafeData (MigrateFrom a) => Migrate a where
     -- | This is the type we're extending. Each type capable of migration can
     --   only extend one other type.
     type MigrateFrom a
@@ -71,11 +102,11 @@ newtype Prim a = Prim { getPrimitive :: a }
 -- | The centerpiece of this library. Defines a version for a data type
 --   together with how it should be serialized/parsed.
 --
---   Users should define instances of 'SafeCopy' for their types
+--   Users should define instances of 'SafeData' for their types
 --   even though 'getCopy' and 'putCopy' can't be used directly.
---   To serialize/parse a data type using 'SafeCopy', see 'safeGet'
+--   To serialize/parse a data type using 'SafeData', see 'safeGet'
 --   and 'safePut'.
-class SafeCopy a where
+class SafeData a where
     -- | The version of the type.
     --
     --   Only used as a key so it must be unique (this is checked at run-time)
@@ -95,12 +126,19 @@ class SafeCopy a where
     -- | This method defines how a value should be parsed without also worrying
     --   about writing out the version tag. This function cannot be used directly.
     --   One should use 'safeGet', instead.
-    getCopy  :: Contained (Get a)
+    getCopy :: Value -> Contained a
+
+    getCopies :: Value -> Contained [a]
+    getCopies (Array vs) = contain $ map (unsafeUnPack . getCopy) vs
+    getCopies _           = error "getCopies: Array expected"
 
     -- | This method defines how a value should be parsed without worrying about
     --   previous versions or migrations. This function cannot be used directly.
     --   One should use 'safeGet', instead.
-    putCopy  :: a -> Contained Put
+    putCopy :: a -> Contained Value
+
+    putCopies :: [a] -> Contained Value
+    putCopies = contain . Array . map (unsafeUnPack . putCopy)
 
     -- | Internal function that should not be overrided.
     --   @Consistent@ iff the version history is consistent
@@ -124,37 +162,28 @@ class SafeCopy a where
     errorTypeName :: Proxy a -> String
     errorTypeName _ = "<unkown type>"
 
-#ifdef DEFAULT_SIGNATURES
-    default getCopy :: Serialize a => Contained (Get a)
-    getCopy = contain get
 
-    default putCopy :: Serialize a => a -> Contained Put
-    putCopy = contain . put
-#endif
-
-
--- constructGetterFromVersion :: SafeCopy a => Version a -> Kind (MigrateFrom (Reverse a)) -> Get (Get a)
-constructGetterFromVersion :: SafeCopy a => Version a -> Kind a -> Either String (Get a)
+constructGetterFromVersion :: SafeData a => Version a -> Kind a -> Either String (Value -> Contained a)
 constructGetterFromVersion diskVersion orig_kind =
   worker False diskVersion orig_kind
   where
-    worker :: forall a. SafeCopy a => Bool -> Version a -> Kind a -> Either String (Get a)
+    worker :: forall a. SafeData a => Bool -> Version a -> Kind a -> Either String (Value -> Contained a)
     worker fwd thisVersion thisKind
-      | version == thisVersion = return $ unsafeUnPack getCopy
+      | version == thisVersion = return $ getCopy
       | otherwise =
         case thisKind of
           Primitive -> Left $ errorMsg thisKind "Cannot migrate from primitive types."
           Base      -> Left $ errorMsg thisKind versionNotFound
           Extends b_proxy -> do
             previousGetter <- worker fwd (castVersion diskVersion) (kindFromProxy b_proxy)
-            return $ fmap migrate previousGetter
+            return $ contain . migrate . unsafeUnPack . previousGetter
           Extended{} | fwd -> Left $ errorMsg thisKind versionNotFound
           Extended a_kind -> do
             let rev_proxy :: Proxy (MigrateFrom (Reverse a))
                 rev_proxy = Proxy
-                forwardGetter :: Either String (Get a)
-                forwardGetter  = fmap (fmap (unReverse . migrate)) $ worker True (castVersion thisVersion) (kindFromProxy rev_proxy)
-                previousGetter :: Either String (Get a)
+                forwardGetter :: Either String (Value -> Contained a)
+                forwardGetter  = fmap ((contain . unReverse . migrate . unsafeUnPack) .) $ worker True (castVersion thisVersion) (kindFromProxy rev_proxy)
+                previousGetter :: Either String (Value -> Contained a)
                 previousGetter = worker fwd (castVersion thisVersion) a_kind
             case forwardGetter of
               Left{}    -> previousGetter
@@ -175,46 +204,41 @@ constructGetterFromVersion diskVersion orig_kind =
 
 -- | Parse a version tagged data type and then migrate it to the desired type.
 --   Any serialized value has been extended by the return type can be parsed.
-safeGet :: SafeCopy a => Get a
-safeGet
-    = join getSafeGet
+safeGet :: SafeData a => Value -> a
+safeGet = getSafeGet
 
 -- | Parse a version tag and return the corresponding migrated parser. This is
 --   useful when you can prove that multiple values have the same version.
 --   See 'getSafePut'.
-getSafeGet :: forall a. SafeCopy a => Get (Get a)
-getSafeGet
+getSafeGet :: forall a. SafeData a => Value -> a
+getSafeGet sv
     = checkConsistency proxy $
       case kindFromProxy proxy of
-        Primitive -> return $ unsafeUnPack getCopy
-        a_kind    -> do v <- get
-                        case constructGetterFromVersion v a_kind of
-                          Right getter -> return getter
-                          Left msg     -> fail msg
+        Primitive -> unsafeUnPack $ getCopy sv
+        a_kind    -> case sv of
+          (Object _ _ v _) -> case constructGetterFromVersion (Version v) a_kind of
+            Right getter -> unsafeUnPack $ getter sv
+            Left msg     -> error msg
+          _                -> unsafeUnPack $ getCopy sv
     where proxy = Proxy :: Proxy a
 
 -- | Serialize a data type by first writing out its version tag. This is much
 --   simpler than the corresponding 'safeGet' since previous versions don't
 --   come into play.
-safePut :: SafeCopy a => a -> Put
-safePut a
-    = do putter <- getSafePut
-         putter a
+safePut :: SafeData a => a -> Value
+safePut = getSafePut
 
--- | Serialize the version tag and return the associated putter. This is useful
---   when serializing multiple values with the same version. See 'getSafeGet'.
-getSafePut :: forall a. SafeCopy a => PutM (a -> Put)
+getSafePut :: forall a. SafeData a => (a -> Value)
 getSafePut
     = checkConsistency proxy $
       case kindFromProxy proxy of
-        Primitive -> return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
-        _         -> do put (versionFromProxy proxy)
-                        return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
+        Primitive -> \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
+        _         -> \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
     where proxy = Proxy :: Proxy a
 
 -- | The extended_base kind lets the system know that there is
 --   at least one future version of this type.
-extended_extension :: (SafeCopy a, Migrate a, Migrate (Reverse a)) => Kind a
+extended_extension :: (SafeData a, Migrate a, Migrate (Reverse a)) => Kind a
 extended_extension = Extended extension
 
 -- | The extended_base kind lets the system know that there is
@@ -227,7 +251,7 @@ extended_base = Extended base
 --   can only extend a single other data type. However, it is
 --   perfectly fine to build chains of extensions. The migrations
 --   between each step is handled automatically.
-extension :: (SafeCopy a, Migrate a) => Kind a
+extension :: (SafeData a, Migrate a) => Kind a
 extension = Extends Proxy
 
 -- | The default kind. Does not extend any type.
@@ -259,10 +283,6 @@ instance Num (Version a) where
     signum (Version a) = Version (signum a)
     fromInteger i = Version (fromInteger i)
 
-instance Serialize (Version a) where
-    get = liftM Version get
-    put = put . unVersion
-
 -------------------------------------------------
 -- Container type to control the access to the
 -- parsers/putters.
@@ -288,7 +308,7 @@ data Profile a =
   , profileSupportedVersions :: [Int32]
   } deriving (Show)
 
-mkProfile :: SafeCopy a => Proxy a -> Profile a
+mkProfile :: SafeData a => Proxy a -> Profile a
 mkProfile a_proxy =
   case computeConsistency a_proxy of
     NotConsistent msg -> InvalidProfile msg
@@ -300,11 +320,11 @@ mkProfile a_proxy =
 
 data Consistency a = Consistent | NotConsistent String
 
-availableVersions :: SafeCopy a => Proxy a -> [Int32]
+availableVersions :: SafeData a => Proxy a -> [Int32]
 availableVersions a_proxy =
   worker True (kindFromProxy a_proxy)
   where
-    worker :: SafeCopy b => Bool -> Kind b -> [Int32]
+    worker :: SafeData b => Bool -> Kind b -> [Int32]
     worker fwd b_kind =
       case b_kind of
         Primitive         -> []
@@ -317,7 +337,7 @@ getForwardKind :: (Migrate (Reverse a)) => Kind a -> Kind (MigrateFrom (Reverse 
 getForwardKind _ = kind
 
 -- Extend chains must end in a Base kind. Ending in a Primitive is an error.
-validChain :: SafeCopy a => Proxy a -> Bool
+validChain :: SafeData a => Proxy a -> Bool
 validChain a_proxy =
   worker (kindFromProxy a_proxy)
   where
@@ -325,7 +345,7 @@ validChain a_proxy =
     worker Base              = True
     worker (Extends b_proxy) = check (kindFromProxy b_proxy)
     worker (Extended a_kind)   = worker a_kind
-    check :: SafeCopy b => Kind b -> Bool
+    check :: SafeData b => Kind b -> Bool
     check b_kind
               = case b_kind of
                   Primitive       -> False
@@ -333,15 +353,15 @@ validChain a_proxy =
                   Extends c_proxy -> check (kindFromProxy c_proxy)
                   Extended sub_kind   -> check sub_kind
 
--- Verify that the SafeCopy instance is consistent.
-checkConsistency :: (SafeCopy a, Monad m) => Proxy a -> m b -> m b
+-- Verify that the SafeData instance is consistent.
+checkConsistency :: SafeData a => Proxy a -> b -> b
 checkConsistency proxy ks
     = case consistentFromProxy proxy of
-        NotConsistent msg -> fail msg
+        NotConsistent msg -> error msg
         Consistent        -> ks
 
 {-# INLINE computeConsistency #-}
-computeConsistency :: SafeCopy a => Proxy a -> Consistency a
+computeConsistency :: SafeData a => Proxy a -> Consistency a
 computeConsistency proxy
     -- Match a few common cases before falling through to the general case.
     -- This allows use to generate nearly all consistencies at compile-time.
@@ -370,19 +390,19 @@ proxyFromConsistency _ = Proxy
 proxyFromKind :: Kind a -> Proxy a
 proxyFromKind _ = Proxy
 
-consistentFromProxy :: SafeCopy a => Proxy a -> Consistency a
+consistentFromProxy :: SafeData a => Proxy a -> Consistency a
 consistentFromProxy _ = internalConsistency
 
-versionFromProxy :: SafeCopy a => Proxy a -> Version a
+versionFromProxy :: SafeData a => Proxy a -> Version a
 versionFromProxy _ = version
 
-versionFromKind :: (SafeCopy a) => Kind a -> Version a
+versionFromKind :: (SafeData a) => Kind a -> Version a
 versionFromKind _ = version
 
-versionFromReverseKind :: (SafeCopy a, SafeCopy (MigrateFrom (Reverse a))) => Kind a -> Version (MigrateFrom (Reverse a))
+versionFromReverseKind :: (SafeData a, SafeData (MigrateFrom (Reverse a))) => Kind a -> Version (MigrateFrom (Reverse a))
 versionFromReverseKind _ = version
 
-kindFromProxy :: SafeCopy a => Proxy a -> Kind a
+kindFromProxy :: SafeData a => Proxy a -> Kind a
 kindFromProxy _ = kind
 
 -------------------------------------------------

@@ -5,13 +5,13 @@
 
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Data.SafeCopy
+-- Module      :  Data.SafeData
 -- Copyright   :  PublicDomain
 --
 -- Maintainer  :  lemmih@gmail.com
 -- Portability :  non-portable (uses GHC extensions)
 --
--- SafeCopy extends the parsing and serialization capabilities of Data.Serialize
+-- SafeData extends the parsing and serialization capabilities of Data.Serialize
 -- to include nested version control. Nested version control means that you
 -- can change the definition and binary format of a type nested deep within
 -- other types without problems.
@@ -23,7 +23,7 @@
 --type Name     = String
 --type Address  = String
 --data Contacts = Contacts [(Name, Address)]
---instance SafeCopy Contacts where
+--instance SafeData Contacts where
 --     putCopy (Contacts list) = contain $ safePut list
 --     getCopy = contain $ Contacts \<$\> safeGet
 -- @
@@ -34,7 +34,7 @@
 -- addresses. Being the experienced coder that you are, you see that using a 3-tuple
 -- isn't very pretty and you'd rather use a record. At first you fear that this
 -- change in structure will invalidate all your old data. Those fears are quickly quelled,
--- though, when you remember how nifty SafeCopy is. With renewed enthusiasm,
+-- though, when you remember how nifty SafeData is. With renewed enthusiasm,
 -- you set out and write the following code:
 --
 -- @
@@ -44,19 +44,19 @@
 --
 --{- We rename our old Contacts structure -}
 --data Contacts_v0 = Contacts_v0 [(Name, Address)]
---instance SafeCopy Contacts_v0 where
+--instance SafeData Contacts_v0 where
 --     putCopy (Contacts_v0 list) = contain $ safePut list
 --     getCopy = contain $ Contacts_v0 \<$\> safeGet
 --
 --data Contact = Contact { name    :: Name
 --                        , address :: Address
 --                        , phone   :: Phone }
---instance SafeCopy Contact where
+--instance SafeData Contact where
 --    putCopy Contact{..} = contain $ do safePut name; safePut address; safePut phone
 --    getCopy = contain $ Contact \<$\> safeGet \<*\> safeGet \<*\> safeGet
 --
 --data Contacts = Contacts [Contact]
---instance SafeCopy Contacts where
+--instance SafeData Contacts where
 --     version = 2
 --     kind = extension
 --     putCopy (Contacts contacts) = contain $ safePut contacts
@@ -74,11 +74,11 @@
 -- With this, you reflect on your code and you are happy. You feel confident in the safety of
 -- your data and you know you can remove @Contacts_v0@ once you no longer wish to support
 -- that legacy format.
-module Data.SafeCopy
+module Data.SafeData
     (
       safeGet
     , safePut
-    , SafeCopy(version, kind, getCopy, putCopy, objectProfile, errorTypeName)
+    , SafeData(version, kind, getCopy, putCopy, objectProfile, errorTypeName)
     , Profile(..)
     , Prim(..)
     , Migrate(..)
@@ -90,15 +90,17 @@ module Data.SafeCopy
     , base
     , Contained
     , contain
+    , Value (..)
     , Version
 
       -- * Template haskell functions
-    , deriveSafeCopy
-    , deriveSafeCopyIndexedType
-    , deriveSafeCopySimple
-    , deriveSafeCopySimpleIndexedType
-    , deriveSafeCopyHappstackData
-    , deriveSafeCopyHappstackDataIndexedType
+    , deriveSafeData
+    , deriveSafeDataAll
+    , deriveSafeDataIndexedType
+    , deriveSafeDataSimple
+    , deriveSafeDataSimpleIndexedType
+    , deriveSafeDataHappstackData
+    , deriveSafeDataHappstackDataIndexedType
 
       -- * Rarely used functions
     , getSafeGet
@@ -106,6 +108,6 @@ module Data.SafeCopy
     , primitive
     ) where
 
-import Data.SafeCopy.Instances ()
-import Data.SafeCopy.SafeCopy
-import Data.SafeCopy.Derive
+import Data.SafeData.Instances ()
+import Data.SafeData.SafeData
+import Data.SafeData.Derive
