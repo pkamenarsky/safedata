@@ -21,11 +21,152 @@
 --
 module Data.SafeCopy.SafeCopy where
 
-import Data.Serialize
+import           Data.Int
+import           Data.List
+import           Data.Monoid
+import           Data.Word
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BSL
 
-import Control.Monad
-import Data.Int (Int32)
-import Data.List
+import           Control.Applicative
+import           Control.Monad
+import           Control.Monad.Identity
+import           Control.Monad.Writer
+
+data Value = BValue Bool
+           | CValue Char
+           | DValue Double
+           | FValue Float
+           | IValue Int
+           | I8Value Int8
+           | I16Value Int16
+           | I32Value Int32
+           | I64Value Int64
+           | BIValue Integer
+           | OValue Ordering
+           | WValue Word
+           | W8Value Word8
+           | W16Value Word16
+           | W32Value Word32
+           | W64Value Word64
+           | UValue ()
+           | BSValue BS.ByteString
+           | BSLValue BSL.ByteString
+
+class Serialize t where
+  put :: t -> Put
+  get :: Get t
+
+newtype Builder = Builder [(String, Value)]
+
+value :: Value -> Builder
+value v = Builder [("", v)]
+
+instance Monoid Builder where
+  mempty = Builder []
+  Builder vs `mappend` Builder vs' = Builder $ vs ++ vs'
+
+type PutM a = WriterT Builder Identity a
+type Put = PutM ()
+
+data Get a = Get { unGet :: a }
+
+label :: String -> Get a -> Get a
+label = undefined
+
+putWord8 :: Get Word8
+putWord8 = undefined
+
+getWord8 :: Get Word8
+getWord8 = undefined
+
+instance Functor Get where
+  fmap = undefined
+
+instance Monad Get where
+  return = undefined
+  (>>=) = undefined
+
+instance Applicative Get where
+  pure = undefined
+  (<*>) = undefined
+
+instance Serialize Bool where
+  put = tell . value . BValue
+  get = undefined
+
+instance Serialize Char where
+  put = tell . value . CValue
+  get = undefined
+
+instance Serialize Double where
+  put = tell . value . DValue
+  get = undefined
+
+instance Serialize Float where
+  put = tell . value . FValue
+  get = undefined
+
+instance Serialize Int where
+  put = tell . value . IValue
+  get = undefined
+
+instance Serialize Int8 where
+  put = tell . value . I8Value
+  get = undefined
+
+instance Serialize Int16 where
+  put = tell . value . I16Value
+  get = undefined
+
+instance Serialize Int32 where
+  put = tell . value . I32Value
+  get = undefined
+
+instance Serialize Int64 where
+  put = tell . value . I64Value
+  get = undefined
+
+instance Serialize Integer where
+  put = tell . value . BIValue
+  get = undefined
+
+instance Serialize Ordering where
+  put = tell . value . OValue
+  get = undefined
+
+instance Serialize Word where
+  put = tell . value . WValue
+  get = undefined
+
+instance Serialize Word8 where
+  put = tell . value . W8Value
+  get = undefined
+
+instance Serialize Word16 where
+  put = tell . value . W16Value
+  get = undefined
+
+instance Serialize Word32 where
+  put = tell . value . W32Value
+  get = undefined
+
+instance Serialize Word64 where
+  put = tell . value . W64Value
+  get = undefined
+
+instance Serialize () where
+  put = tell . value . UValue
+  get = undefined
+
+instance Serialize BS.ByteString where
+  put = tell . value . BSValue
+  get = undefined
+
+instance Serialize BSL.ByteString where
+  put = tell . value . BSLValue
+  get = undefined
+
 
 -- | The central mechanism for dealing with version control.
 --
@@ -124,6 +265,7 @@ class SafeCopy a where
     errorTypeName :: Proxy a -> String
     errorTypeName _ = "<unkown type>"
 
+{-
 #ifdef DEFAULT_SIGNATURES
     default getCopy :: Serialize a => Contained (Get a)
     getCopy = contain get
@@ -131,6 +273,7 @@ class SafeCopy a where
     default putCopy :: Serialize a => a -> Contained Put
     putCopy = contain . put
 #endif
+-}
 
 
 -- constructGetterFromVersion :: SafeCopy a => Version a -> Kind (MigrateFrom (Reverse a)) -> Get (Get a)

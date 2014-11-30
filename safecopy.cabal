@@ -54,8 +54,8 @@ Library
   Hs-Source-Dirs:      src/
 
   -- Packages needed in order to build this package.
-  Build-depends:       base >=4 && <5, array, cereal >= 0.3.1.0, bytestring, containers >= 0.3,
-                       old-time, template-haskell, text, time, vector == 0.10.*
+  Build-depends:       base >=4 && <5, array, bytestring, containers >= 0.3,
+                       mtl >= 2, old-time, template-haskell, text, time, vector == 0.10.*
 
   -- Modules not exported by this package.
   Other-modules:       Data.SafeCopy.Instances, Data.SafeCopy.SafeCopy,
@@ -77,6 +77,6 @@ Test-suite instances
   Main-is:             instances.hs
   Hs-Source-Dirs:      test/
   GHC-Options:         -Wall -threaded -rtsopts -with-rtsopts=-N
-  Build-depends:       base, cereal, template-haskell, safecopy,
+  Build-depends:       base, template-haskell, safecopy,
                        containers, time, array, vector, lens,
                        tasty, tasty-quickcheck, quickcheck-instances

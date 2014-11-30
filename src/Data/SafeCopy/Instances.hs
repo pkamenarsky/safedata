@@ -21,7 +21,6 @@ import           Data.Ix
 import qualified Data.Map as Map
 import           Data.Ratio (Ratio, (%), numerator, denominator)
 import qualified Data.Sequence as Sequence
-import           Data.Serialize
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
