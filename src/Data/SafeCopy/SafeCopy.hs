@@ -58,18 +58,13 @@ data Value = BValue Bool
            deriving Show
 
 class Serialize t where
-  get :: Get t
-
-  putWithKey :: String -> t -> Put
-  putWithKey _ = put
-
   put :: t -> Put
-  put = putWithKey ""
+  get :: Get t
 
 newtype Builder = Builder [(String, Value)] deriving Show
 
-value :: String -> Value -> Builder
-value k v = Builder [(k, v)]
+value :: Value -> Builder
+value v = Builder [("", v)]
 
 instance Monoid Builder where
   mempty = Builder []
@@ -101,83 +96,83 @@ instance Applicative Get where
   (<*>) = undefined
 
 instance Serialize Bool where
-  putWithKey k v = tell $ value k $ BValue v
+  put = tell . value . BValue
   get = undefined
 
 instance Serialize Char where
-  putWithKey k v = tell $ value k $ CValue v
+  put = tell . value . CValue
   get = undefined
 
 instance Serialize Double where
-  putWithKey k v = tell $ value k $ DValue v
+  put = tell . value . DValue
   get = undefined
 
 instance Serialize Float where
-  putWithKey k v = tell $ value k $ FValue v
+  put = tell . value . FValue
   get = undefined
 
 instance Serialize Int where
-  putWithKey k v = tell $ value k $ IValue v
+  put = tell . value . IValue
   get = undefined
 
 instance Serialize Int8 where
-  putWithKey k v = tell $ value k $ I8Value v
+  put = tell . value . I8Value
   get = undefined
 
 instance Serialize Int16 where
-  putWithKey k v = tell $ value k $ I16Value v
+  put = tell . value . I16Value
   get = undefined
 
 instance Serialize Int32 where
-  putWithKey k v = tell $ value k $ I32Value v
+  put = tell . value . I32Value
   get = undefined
 
 instance Serialize Int64 where
-  putWithKey k v = tell $ value k $ I64Value v
+  put = tell . value . I64Value
   get = undefined
 
 instance Serialize Integer where
-  putWithKey k v = tell $ value k $ BIValue v
+  put = tell . value . BIValue
   get = undefined
 
 instance Serialize Ordering where
-  putWithKey k v = tell $ value k $ OValue v
+  put = tell . value . OValue
   get = undefined
 
 instance Serialize Word where
-  putWithKey k v = tell $ value k $ WValue v
+  put = tell . value . WValue
   get = undefined
 
 instance Serialize Word8 where
-  putWithKey k v = tell $ value k $ W8Value v
+  put = tell . value . W8Value
   get = undefined
 
 instance Serialize Word16 where
-  putWithKey k v = tell $ value k $ W16Value v
+  put = tell . value . W16Value
   get = undefined
 
 instance Serialize Word32 where
-  putWithKey k v = tell $ value k $ W32Value v
+  put = tell . value . W32Value
   get = undefined
 
 instance Serialize Word64 where
-  putWithKey k v = tell $ value k $ W64Value v
+  put = tell . value . W64Value
   get = undefined
 
 instance Serialize () where
-  putWithKey k v = tell $ value k $ UValue v
+  put = tell . value . UValue
   get = undefined
 
 instance Serialize BS.ByteString where
-  putWithKey k v = tell $ value k $ BSValue v
+  put = tell . value . BSValue
   get = undefined
 
 instance Serialize BSL.ByteString where
-  putWithKey k v = tell $ value k $ BSLValue v
+  put = tell . value . BSLValue
   get = undefined
 
 instance SafeCopy a => Serialize [a] where
-  putWithKey k vs = tell $ value k $ mkAValue $ map snd vs'
+  put vs = tell $ value $ mkAValue $ map snd vs'
     where
       Builder vs' = execWriter $ mapM safePut vs
 
@@ -289,6 +284,7 @@ class SafeCopy a where
     errorTypeName :: Proxy a -> String
     errorTypeName _ = "<unkown type>"
 
+{-
 #ifdef DEFAULT_SIGNATURES
     default getCopy :: Serialize a => Contained (Get a)
     getCopy = contain get
@@ -296,6 +292,7 @@ class SafeCopy a where
     default putCopy :: Serialize a => a -> Contained Put
     putCopy = contain . put
 #endif
+-}
 
 
 -- constructGetterFromVersion :: SafeCopy a => Version a -> Kind (MigrateFrom (Reverse a)) -> Get (Get a)
@@ -373,7 +370,7 @@ getSafePut
     = checkConsistency proxy $
       case kindFromProxy proxy of
         Primitive -> return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
-        _         -> do putWithKey "_version" (versionFromProxy proxy)
+        _         -> do put (versionFromProxy proxy)
                         return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
     where proxy = Proxy :: Proxy a
 
@@ -426,7 +423,7 @@ instance Num (Version a) where
 
 instance Serialize (Version a) where
     get = liftM Version get
-    putWithKey k = putWithKey k . unVersion
+    put = put . unVersion
 
 -------------------------------------------------
 -- Container type to control the access to the

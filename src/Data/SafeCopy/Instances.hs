@@ -54,7 +54,7 @@ instance SafeCopy a => SafeCopy (Prim a) where
     = contain $ unsafeUnPack (putCopy e)
 
 instance SafeCopy a => SafeCopy [a] where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName1
+    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName1
 
 {-
 instance SafeCopy a => SafeCopy [a] where
