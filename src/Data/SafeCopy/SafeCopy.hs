@@ -61,10 +61,10 @@ class Serialize t where
   put :: t -> Put
   get :: Get t
 
-newtype Builder = Builder [(String, Value)] deriving Show
+newtype Builder = Builder [Value] deriving Show
 
 value :: Value -> Builder
-value v = Builder [("", v)]
+value v = Builder [v]
 
 instance Monoid Builder where
   mempty = Builder []
@@ -171,8 +171,8 @@ instance Serialize BSL.ByteString where
   put = tell . value . BSLValue
   get = undefined
 
-instance SafeCopy a => Serialize [a] where
-  put vs = tell $ value $ mkAValue $ map snd vs'
+instance (SafeCopy a, SafeCopy Char) => Serialize [a] where
+  put vs = tell $ value $ mkAValue vs'
     where
       Builder vs' = execWriter $ mapM safePut vs
 
@@ -358,19 +358,20 @@ getSafeGet
 -- | Serialize a data type by first writing out its version tag. This is much
 --   simpler than the corresponding 'safeGet' since previous versions don't
 --   come into play.
-safePut :: SafeCopy a => a -> Put
+safePut :: SafeCopy a => SafeCopy Char => a -> Put
 safePut a
     = do putter <- getSafePut
          putter a
 
 -- | Serialize the version tag and return the associated putter. This is useful
 --   when serializing multiple values with the same version. See 'getSafeGet'.
-getSafePut :: forall a. SafeCopy a => PutM (a -> Put)
+getSafePut :: forall a. SafeCopy a => SafeCopy Char => PutM (a -> Put)
 getSafePut
     = checkConsistency proxy $
       case kindFromProxy proxy of
         Primitive -> return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
-        _         -> do put (versionFromProxy proxy)
+        _         -> do put "_version"
+                        put (versionFromProxy proxy)
                         return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
     where proxy = Proxy :: Proxy a
 

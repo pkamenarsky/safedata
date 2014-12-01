@@ -311,7 +311,8 @@ mkPutCopy deriveType cons = funD 'putCopy $ map mkPutClause cons
                    putCopyBody = varE 'contain `appE` doE (
                                    [ noBindS $ varE 'putWord8 `appE` litE (IntegerL conNumber) | manyConstructors ] ++
                                    putFunsDecs ++
-                                   [ noBindS $ varE (putFuns typ) `appE` varE var | (typ, var) <- zip (conTypes con) putVars ] ++
+                                   concat [ [ noBindS $ varE 'safePut `appE` (litE $ stringL $ nameBase name),
+                                       noBindS $ varE (putFuns typ) `appE` varE var ] | (typ, name, var) <- zip3 (conTypes con) (conNames con) putVars ] ++
                                    [ noBindS $ varE 'return `appE` tupE [] ])
                clause [putClause] (normalB putCopyBody) []
 
@@ -383,6 +384,12 @@ conSize (NormalC _name args) = length args
 conSize (RecC _name recs)    = length recs
 conSize InfixC{}             = 2
 conSize ForallC{}            = error "Found complex constructor. Cannot derive SafeCopy for it."
+
+conNames :: Con -> [Name]
+conNames (NormalC _name args) = [mkName $ "field" ++ show n | n <- [1..length args]]
+conNames (RecC _name recs)    = [n | (n, _, _) <- recs]
+conNames InfixC{}             = [mkName "field1", mkName "field2"]
+conNames ForallC{}            = error "Found complex constructor. Cannot derive SafeCopy for it."
 
 conName :: Con -> Name
 conName (NormalC name _args) = name
