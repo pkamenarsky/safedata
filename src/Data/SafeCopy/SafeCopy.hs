@@ -33,6 +33,11 @@ import           Control.Monad
 import           Control.Monad.Identity
 import           Control.Monad.Writer
 
+import           Data.Typeable
+
+type Key = String
+type Cstr = Word8
+
 data Value = BValue Bool
            | CValue Char
            | SValue String
@@ -44,7 +49,7 @@ data Value = BValue Bool
            | I32Value Int32
            | I64Value Int64
            | BIValue Integer
-           | OValue Ordering
+           | OrdValue Ordering
            | WValue Word
            | W8Value Word8
            | W16Value Word16
@@ -54,6 +59,8 @@ data Value = BValue Bool
            | BSValue BS.ByteString
            | BSLValue BSL.ByteString
 
+           | KValue Key [Value]
+           | OValue Cstr Int32 [(Key, Value)]
            | AValue [Value]
            deriving Show
 
@@ -61,7 +68,7 @@ class Serialize t where
   put :: t -> Put
   get :: Get t
 
-newtype Builder = Builder [Value] deriving Show
+newtype Builder = Builder { unBuild :: [Value] } deriving Show
 
 value :: Value -> Builder
 value v = Builder [v]
@@ -90,6 +97,19 @@ instance Functor Get where
 instance Monad Get where
   return = undefined
   (>>=) = undefined
+
+typeName :: Typeable a => Proxy a -> String
+typeName proxy = show (typeOf (undefined `asProxyType` proxy))
+
+typeName1 :: (Typeable1 c) => Proxy (c a) -> String
+typeName1 proxy = show (typeOf1 (undefined `asProxyType` proxy))
+
+typeName2 :: (Typeable2 c) => Proxy (c a b) -> String
+typeName2 proxy = show (typeOf2 (undefined `asProxyType` proxy))
+
+
+instance SafeCopy a => SafeCopy [a] where
+    kind = primitive; getCopy = undefined; putCopy = undefined; putValue = putValues; errorTypeName = typeName1
 
 instance Applicative Get where
   pure = undefined
@@ -136,7 +156,7 @@ instance Serialize Integer where
   get = undefined
 
 instance Serialize Ordering where
-  put = tell . value . OValue
+  put = tell . value . OrdValue
   get = undefined
 
 instance Serialize Word where
@@ -262,6 +282,11 @@ class SafeCopy a where
     --   One should use 'safeGet', instead.
     putCopy  :: a -> Contained Put
 
+    putValue :: a -> Contained Value
+
+    putValues :: [a] -> Contained Value
+    putValues = contain . AValue . map (unsafeUnPack . putValue)
+
     -- | Internal function that should not be overrided.
     --   @Consistent@ iff the version history is consistent
     --   (i.e. there are no duplicate version numbers) and
@@ -358,21 +383,51 @@ getSafeGet
 -- | Serialize a data type by first writing out its version tag. This is much
 --   simpler than the corresponding 'safeGet' since previous versions don't
 --   come into play.
-safePut :: SafeCopy a => SafeCopy Char => a -> Put
+safePut :: SafeCopy a => a -> Put
 safePut a
     = do putter <- getSafePut
          putter a
 
+safeValue :: SafeCopy a => a -> Value
+safeValue = getSafeValue
+
+safePutWithKey :: SafeCopy a => Key -> a -> Put
+safePutWithKey k a
+    = do putter <- getSafePutWithKey
+         putter k a
+
+getSafeValue :: forall a. SafeCopy a => (a -> Value)
+getSafeValue
+    = checkConsistency proxy $
+      case kindFromProxy proxy of
+        Primitive -> \a -> unsafeUnPack (putValue $ asProxyType a proxy)
+        _         -> \a -> unsafeUnPack (putValue $ asProxyType a proxy)
+    where proxy = Proxy :: Proxy a
+
 -- | Serialize the version tag and return the associated putter. This is useful
 --   when serializing multiple values with the same version. See 'getSafeGet'.
-getSafePut :: forall a. SafeCopy a => SafeCopy Char => PutM (a -> Put)
+getSafePut :: forall a. SafeCopy a => PutM (a -> Put)
 getSafePut
     = checkConsistency proxy $
       case kindFromProxy proxy of
         Primitive -> return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
-        _         -> do put "_version"
-                        put (versionFromProxy proxy)
-                        return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
+        _         -> do put (versionFromProxy proxy)
+                        return $ \a -> do
+                          tell $ value $ KValue "_version" $ unBuild $ execWriter $ put (versionFromProxy proxy)
+                          unsafeUnPack (putCopy $ asProxyType a proxy)
+    where proxy = Proxy :: Proxy a
+
+getSafePutWithKey :: forall a. SafeCopy a => PutM (Key -> a -> Put)
+getSafePutWithKey
+    = checkConsistency proxy $
+      case kindFromProxy proxy of
+        Primitive -> return $ \k a ->
+                        tell $ value $ KValue k $ unBuild $ execWriter $ unsafeUnPack (putCopy $ asProxyType a proxy)
+        _         -> do
+                        return $ \k a -> do
+                          tell $ value $ KValue k $ unBuild $ execWriter $ do
+                            tell $ value $ KValue "_version" $ unBuild $ execWriter $ put (versionFromProxy proxy)
+                            unsafeUnPack (putCopy $ asProxyType a proxy)
     where proxy = Proxy :: Proxy a
 
 -- | The extended_base kind lets the system know that there is

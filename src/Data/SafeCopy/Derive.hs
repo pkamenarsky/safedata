@@ -258,6 +258,7 @@ internalDeriveSafeCopy deriveType versionId kindName tyName = do
       in (:[]) <$> instanceD (cxt $ [classP ''SafeCopy [varT var] | PlainTV var <- tyvars] ++ map return context)
                                        (conT ''SafeCopy `appT` ty)
                                        [ mkPutCopy deriveType cons
+                                       , mkPutValue (fromIntegral $ unVersion versionId) deriveType cons
                                        , mkGetCopy deriveType (show tyName) cons
                                        , valD (varP 'version) (normalB $ litE $ integerL $ fromIntegral $ unVersion versionId) []
                                        , valD (varP 'kind) (normalB (varE kindName)) []
@@ -298,6 +299,18 @@ internalDeriveSafeCopyIndexedType deriveType versionId kindName tyName tyIndex' 
                                        , funD 'errorTypeName [clause [wildP] (normalB $ litE $ StringL typeNameStr) []]
                                        ]
 
+mkPutValue :: Integer -> DeriveType -> [(Integer, Con)] -> DecQ
+mkPutValue versionId deriveType cons = funD 'putValue $ map mkPutClause cons
+    where
+      mkPutClause (conNumber, con)
+          = do putVars <- replicateM (conSize con) (newName "arg")
+               let putClause   = conP (conName con) (map varP putVars)
+                   putCopyBody = varE 'contain `appE` (conE 'OValue `appE` (litE $ integerL conNumber)
+                                               `appE` (litE $ integerL $ versionId)
+                                               `appE` listE
+                                   [ tupE [ litE $ stringL $ nameBase name, varE 'safeValue `appE` varE var ] | (typ, name, var) <- zip3 (conTypes con) (conNames con) putVars ])
+               clause [putClause] (normalB putCopyBody) []
+
 mkPutCopy :: DeriveType -> [(Integer, Con)] -> DecQ
 mkPutCopy deriveType cons = funD 'putCopy $ map mkPutClause cons
     where
@@ -305,14 +318,13 @@ mkPutCopy deriveType cons = funD 'putCopy $ map mkPutClause cons
       mkPutClause (conNumber, con)
           = do putVars <- replicateM (conSize con) (newName "arg")
                (putFunsDecs, putFuns) <- case deriveType of
-                                           Normal -> mkSafeFunctions "safePut_" 'getSafePut con
-                                           _      -> return ([], const 'safePut)
+                                           Normal -> mkSafeFunctions "safePut_" 'getSafePutWithKey con
+                                           _      -> return ([], const 'safePutWithKey)
                let putClause   = conP (conName con) (map varP putVars)
                    putCopyBody = varE 'contain `appE` doE (
                                    [ noBindS $ varE 'putWord8 `appE` litE (IntegerL conNumber) | manyConstructors ] ++
                                    putFunsDecs ++
-                                   concat [ [ noBindS $ varE 'safePut `appE` (litE $ stringL $ nameBase name),
-                                       noBindS $ varE (putFuns typ) `appE` varE var ] | (typ, name, var) <- zip3 (conTypes con) (conNames con) putVars ] ++
+                                   [ noBindS $ varE (putFuns typ) `appE` (litE $ stringL $ nameBase name) `appE` varE var | (typ, name, var) <- zip3 (conTypes con) (conNames con) putVars ] ++
                                    [ noBindS $ varE 'return `appE` tupE [] ])
                clause [putClause] (normalB putCopyBody) []
 
@@ -355,7 +367,7 @@ mkSafeFunctions name baseFun con = do let origTypes = conTypes con
                                       finish (zip origTypes realTypes) <$> foldM go ([], []) realTypes
     where go (ds, fs) t
               | found     = return (ds, fs)
-              | otherwise = do funVar <- newName (name ++ typeName t)
+              | otherwise = do funVar <- newName (name ++ typeName' t)
                                return ( bindS (varP funVar) (varE baseFun) : ds
                                       , (t, funVar) : fs )
               where found = any ((== t) . fst) fs
@@ -403,12 +415,12 @@ conTypes (RecC _name args)          = [t | (_, _, t) <- args]
 conTypes (InfixC (_, t1) _ (_, t2)) = [t1, t2]
 conTypes _                          = error "conName: never here"
 
-typeName :: Type -> String
-typeName (VarT name) = nameBase name
-typeName (ConT name) = nameBase name
-typeName (TupleT n)  = '(' : replicate (n-1) ',' ++ ")"
-typeName ArrowT      = "Arrow"
-typeName ListT       = "List"
-typeName (AppT t u)  = typeName t ++ typeName u
-typeName (SigT t _k) = typeName t
-typeName _           = "_"
+typeName' :: Type -> String
+typeName' (VarT name) = nameBase name
+typeName' (ConT name) = nameBase name
+typeName' (TupleT n)  = '(' : replicate (n-1) ',' ++ ")"
+typeName' ArrowT      = "Arrow"
+typeName' ListT       = "List"
+typeName' (AppT t u)  = typeName' t ++ typeName' u
+typeName' (SigT t _k) = typeName' t
+typeName' _           = "_"

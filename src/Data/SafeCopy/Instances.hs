@@ -1,5 +1,5 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE FlexibleContexts, UndecidableInstances #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances, UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Data.SafeCopy.Instances where
 
@@ -52,9 +52,6 @@ instance SafeCopy a => SafeCopy (Prim a) where
                return $ Prim e
   putCopy (Prim e)
     = contain $ unsafeUnPack (putCopy e)
-
-instance SafeCopy a => SafeCopy [a] where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName1
 
 {-
 instance SafeCopy a => SafeCopy [a] where
@@ -158,7 +155,7 @@ instance (SafeCopy a, SafeCopy b, SafeCopy c, SafeCopy d, SafeCopy e, SafeCopy f
                                         safePut e >> safePut f >> safePut g
 
 instance SafeCopy Int where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; putValue = contain . IValue; errorTypeName = typeName
 instance SafeCopy Integer where
     kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Float where
@@ -170,7 +167,7 @@ instance SafeCopy L.ByteString where
 instance SafeCopy B.ByteString where
     kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Char where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; putCopy = contain . put; putValue = contain . CValue; putValues = contain . SValue; errorTypeName = typeName
 instance SafeCopy Word8 where
     kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Word16 where
@@ -377,15 +374,6 @@ instance SafeCopy CalendarTime where
                              safePut (ctTZName t)
                              put     (ctTZ t)
                              put     (ctIsDST t)
-
-typeName :: Typeable a => Proxy a -> String
-typeName proxy = show (typeOf (undefined `asProxyType` proxy))
-
-typeName1 :: (Typeable1 c) => Proxy (c a) -> String
-typeName1 proxy = show (typeOf1 (undefined `asProxyType` proxy))
-
-typeName2 :: (Typeable2 c) => Proxy (c a b) -> String
-typeName2 proxy = show (typeOf2 (undefined `asProxyType` proxy))
 
 getGenericVector :: (SafeCopy a, VG.Vector v a) => Contained (Get (v a))
 getGenericVector = contain $ do n <- get
