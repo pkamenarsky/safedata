@@ -155,7 +155,7 @@ instance (SafeCopy a, SafeCopy b, SafeCopy c, SafeCopy d, SafeCopy e, SafeCopy f
                                         safePut e >> safePut f >> safePut g
 
 instance SafeCopy Int where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; putValue = contain . IValue; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; getValue (IValue v) = contain v; getValue _ = error "getValue: Int expected"; putCopy = contain . put; putValue = contain . IValue; errorTypeName = typeName
 instance SafeCopy Integer where
     kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Float where
@@ -167,7 +167,7 @@ instance SafeCopy L.ByteString where
 instance SafeCopy B.ByteString where
     kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Char where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; putValue = contain . CValue; putValues = contain . SValue; errorTypeName = typeName
+    kind = primitive; getCopy = contain get; getValue (CValue v) = contain v; getValue _ = error "getValue: Char expected"; getValues (SValue v) = contain v; getValues _ = error "getValues: [Char] expected"; putCopy = contain . put; putValue = contain . CValue; putValues = contain . SValue; errorTypeName = typeName
 instance SafeCopy Word8 where
     kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Word16 where

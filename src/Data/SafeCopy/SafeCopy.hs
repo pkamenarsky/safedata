@@ -60,7 +60,7 @@ data Value = BValue Bool
            | BSLValue BSL.ByteString
 
            | KValue Key [Value]
-           | OValue Cstr Int32 [(Key, Value)]
+           | OValue String Cstr Int32 [(Key, Value)]
            | AValue [Value]
            deriving Show
 
@@ -109,7 +109,7 @@ typeName2 proxy = show (typeOf2 (undefined `asProxyType` proxy))
 
 
 instance SafeCopy a => SafeCopy [a] where
-    kind = primitive; getCopy = undefined; putCopy = undefined; putValue = putValues; errorTypeName = typeName1
+    kind = primitive; getCopy = undefined; putCopy = undefined; putValue = putValues; getValue = getValues; errorTypeName = typeName1
 
 instance Applicative Get where
   pure = undefined
@@ -286,6 +286,12 @@ class SafeCopy a where
 
     putValues :: [a] -> Contained Value
     putValues = contain . AValue . map (unsafeUnPack . putValue)
+
+    getValue :: Value -> Contained a
+
+    getValues :: Value -> Contained [a]
+    getValues (AValue vs) = contain $ map (unsafeUnPack . getValue) vs
+    getValues _           = error "getValues: AValue expected"
 
     -- | Internal function that should not be overrided.
     --   @Consistent@ iff the version history is consistent

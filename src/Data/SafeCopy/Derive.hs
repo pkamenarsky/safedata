@@ -258,8 +258,9 @@ internalDeriveSafeCopy deriveType versionId kindName tyName = do
       in (:[]) <$> instanceD (cxt $ [classP ''SafeCopy [varT var] | PlainTV var <- tyvars] ++ map return context)
                                        (conT ''SafeCopy `appT` ty)
                                        [ mkPutCopy deriveType cons
-                                       , mkPutValue (fromIntegral $ unVersion versionId) deriveType cons
+                                       , mkPutValue (show tyName) (fromIntegral $ unVersion versionId) deriveType cons
                                        , mkGetCopy deriveType (show tyName) cons
+                                       -- , mkGetValue deriveType (show tyName) cons
                                        , valD (varP 'version) (normalB $ litE $ integerL $ fromIntegral $ unVersion versionId) []
                                        , valD (varP 'kind) (normalB (varE kindName)) []
                                        , funD 'errorTypeName [clause [wildP] (normalB $ litE $ StringL (show tyName)) []]
@@ -299,15 +300,16 @@ internalDeriveSafeCopyIndexedType deriveType versionId kindName tyName tyIndex' 
                                        , funD 'errorTypeName [clause [wildP] (normalB $ litE $ StringL typeNameStr) []]
                                        ]
 
-mkPutValue :: Integer -> DeriveType -> [(Integer, Con)] -> DecQ
-mkPutValue versionId deriveType cons = funD 'putValue $ map mkPutClause cons
+mkPutValue :: String -> Integer -> DeriveType -> [(Integer, Con)] -> DecQ
+mkPutValue tyName versionId deriveType cons = funD 'putValue $ map mkPutClause cons
     where
       mkPutClause (conNumber, con)
           = do putVars <- replicateM (conSize con) (newName "arg")
                let putClause   = conP (conName con) (map varP putVars)
-                   putCopyBody = varE 'contain `appE` (conE 'OValue `appE` (litE $ integerL conNumber)
-                                               `appE` (litE $ integerL $ versionId)
-                                               `appE` listE
+                   putCopyBody = varE 'contain `appE` (conE 'OValue `appE` (litE $ stringL tyName)
+                                                                    `appE` (litE $ integerL conNumber)
+                                                                    `appE` (litE $ integerL $ versionId)
+                                                                    `appE` listE
                                    [ tupE [ litE $ stringL $ nameBase name, varE 'safeValue `appE` varE var ] | (typ, name, var) <- zip3 (conTypes con) (conNames con) putVars ])
                clause [putClause] (normalB putCopyBody) []
 
@@ -327,6 +329,37 @@ mkPutCopy deriveType cons = funD 'putCopy $ map mkPutClause cons
                                    [ noBindS $ varE (putFuns typ) `appE` (litE $ stringL $ nameBase name) `appE` varE var | (typ, name, var) <- zip3 (conTypes con) (conNames con) putVars ] ++
                                    [ noBindS $ varE 'return `appE` tupE [] ])
                clause [putClause] (normalB putCopyBody) []
+
+mkGetValue :: DeriveType -> String -> [(Integer, Con)] -> DecQ
+mkGetValue deriveType tyName cons = valD ('getValue `conP` [varP 'OValue]) (normalB $ varE 'contain `appE` getCopyBody) []
+    where
+      getCopyBody
+          = case cons of
+              [(_, con)] | not (forceTag deriveType) -> mkGetBody con
+              _ -> do
+                tagVar <- newName "tag"
+                doE [ bindS (varP tagVar) (varE 'getWord8)
+                    , noBindS $ caseE (varE tagVar) (
+                        [ match (litP $ IntegerL i) (normalB $ mkGetBody con) [] | (i, con) <- cons ] ++
+                        [ match wildP (normalB $ varE 'fail `appE` errorMsg tagVar) [] ]) ]
+      mkGetBody con
+          = do (getFunsDecs, getFuns) <- case deriveType of
+                                           Normal -> mkSafeFunctions "safeGet_" 'getSafeGet con
+                                           _      -> return ([], const 'safeGet)
+               let getBase = appE (varE 'return) (conE (conName con))
+                   getArgs = foldl (\a t -> infixE (Just a) (varE '(<*>)) (Just (varE (getFuns t)))) getBase (conTypes con)
+               doE (getFunsDecs ++ [noBindS getArgs])
+      errorMsg tagVar = infixE (Just $ strE str1) (varE '(++)) $ Just $
+                        infixE (Just tagStr) (varE '(++)) (Just $ strE str2)
+          where
+            strE = litE . StringL
+            tagStr = varE 'show `appE` varE tagVar
+            str1 = "Could not identify tag \""
+            str2 = concat [ "\" for type "
+                          , show tyName
+                          , " that has only "
+                          , show (length cons)
+                          , " constructors.  Maybe your data is corrupted?" ]
 
 mkGetCopy :: DeriveType -> String -> [(Integer, Con)] -> DecQ
 mkGetCopy deriveType tyName cons = valD (varP 'getCopy) (normalB $ varE 'contain `appE` mkLabel) []
