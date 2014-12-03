@@ -260,7 +260,7 @@ internalDeriveSafeCopy deriveType versionId kindName tyName = do
                                        [ mkPutCopy deriveType cons
                                        , mkPutValue (show tyName) (fromIntegral $ unVersion versionId) deriveType cons
                                        , mkGetCopy deriveType (show tyName) cons
-                                       -- , mkGetValue deriveType (show tyName) cons
+                                       , mkGetValue deriveType (show tyName) cons
                                        , valD (varP 'version) (normalB $ litE $ integerL $ fromIntegral $ unVersion versionId) []
                                        , valD (varP 'kind) (normalB (varE kindName)) []
                                        , funD 'errorTypeName [clause [wildP] (normalB $ litE $ StringL (show tyName)) []]
@@ -331,24 +331,39 @@ mkPutCopy deriveType cons = funD 'putCopy $ map mkPutClause cons
                clause [putClause] (normalB putCopyBody) []
 
 mkGetValue :: DeriveType -> String -> [(Integer, Con)] -> DecQ
-mkGetValue deriveType tyName cons = valD ('getValue `conP` [varP 'OValue]) (normalB $ varE 'contain `appE` getCopyBody) []
+mkGetValue deriveType tyName cons = do
+    typ     <- newName "type"
+    cstr    <- newName "cstr"
+    version <- newName "version"
+    kv      <- newName "kv"
+
+    funD 'getValue
+         [ clause
+             [conP 'OValue [varP typ, varP cstr, varP version, varP kv]]
+             (normalB $ varE 'contain `appE` getCopyBody cstr kv)
+             []
+         , clause
+             [wildP]
+             (normalB $ varE 'error `appE` (litE $ stringL "getValue: expected OValue"))
+             []
+         ]
     where
-      getCopyBody
+      getCopyBody cstr kv
           = case cons of
-              [(_, con)] | not (forceTag deriveType) -> mkGetBody con
-              _ -> do
-                tagVar <- newName "tag"
-                doE [ bindS (varP tagVar) (varE 'getWord8)
-                    , noBindS $ caseE (varE tagVar) (
-                        [ match (litP $ IntegerL i) (normalB $ mkGetBody con) [] | (i, con) <- cons ] ++
-                        [ match wildP (normalB $ varE 'fail `appE` errorMsg tagVar) [] ]) ]
-      mkGetBody con
-          = do (getFunsDecs, getFuns) <- case deriveType of
-                                           Normal -> mkSafeFunctions "safeGet_" 'getSafeGet con
-                                           _      -> return ([], const 'safeGet)
-               let getBase = appE (varE 'return) (conE (conName con))
-                   getArgs = foldl (\a t -> infixE (Just a) (varE '(<*>)) (Just (varE (getFuns t)))) getBase (conTypes con)
-               doE (getFunsDecs ++ [noBindS getArgs])
+              [(_, con)] | not (forceTag deriveType) -> mkGetBody kv con
+              _ -> caseE (varE cstr) (
+                    [ match (litP $ IntegerL i) (normalB $ mkGetBody kv con) [] | (i, con) <- cons ] ++
+                    [ match wildP (normalB $ varE 'error `appE` errorMsg cstr) [] ])
+
+      mkGetBody kv con = go (conE $ conName con) (reverse $ conNames con)
+        where
+          error' t     = varE 'error `appE` (litE $ stringL "Field can't be found")
+          fromMaybe' t = varE 'fromMaybe `appE` (error' t)
+          lookup' t    = fromMaybe' t `appE` (varE 'lookup `appE` (litE $ stringL $ nameBase t) `appE` (varE kv))
+
+          go a []      = a
+          go a (t:ts)  = appE (go a ts) (varE 'safeValueGet `appE` lookup' t)
+
       errorMsg tagVar = infixE (Just $ strE str1) (varE '(++)) $ Just $
                         infixE (Just tagStr) (varE '(++)) (Just $ strE str2)
           where

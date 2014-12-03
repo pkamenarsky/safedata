@@ -397,6 +397,9 @@ safePut a
 safeValue :: SafeCopy a => a -> Value
 safeValue = getSafeValue
 
+safeValueGet :: SafeCopy a => Value -> a
+safeValueGet = undefined
+
 safePutWithKey :: SafeCopy a => Key -> a -> Put
 safePutWithKey k a
     = do putter <- getSafePutWithKey
