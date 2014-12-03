@@ -362,7 +362,7 @@ mkGetValue deriveType tyName cons = do
           lookup' t    = fromMaybe' t `appE` (varE 'lookup `appE` (litE $ stringL $ nameBase t) `appE` (varE kv))
 
           go a []      = a
-          go a (t:ts)  = appE (go a ts) (varE 'safeValueGet `appE` lookup' t)
+          go a (t:ts)  = go a ts `appE` (varE 'safeGetValue `appE` lookup' t)
 
       errorMsg tagVar = infixE (Just $ strE str1) (varE '(++)) $ Just $
                         infixE (Just tagStr) (varE '(++)) (Just $ strE str2)

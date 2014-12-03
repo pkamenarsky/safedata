@@ -325,6 +325,39 @@ class SafeCopy a where
 #endif
 -}
 
+constructGetterFromVersion2 :: SafeCopy a => Version a -> Kind a -> Either String (Value -> Contained a)
+constructGetterFromVersion2 diskVersion orig_kind =
+  worker False diskVersion orig_kind
+  where
+    worker :: forall a. SafeCopy a => Bool -> Version a -> Kind a -> Either String (Value -> Contained a)
+    worker fwd thisVersion thisKind
+      | version == thisVersion = return $ getValue
+      | otherwise =
+        case thisKind of
+          Primitive -> Left $ errorMsg thisKind "Cannot migrate from primitive types."
+          Base      -> Left $ errorMsg thisKind versionNotFound
+          Extends b_proxy -> do
+            previousGetter <- worker fwd (castVersion diskVersion) (kindFromProxy b_proxy)
+            return $ contain . migrate . unsafeUnPack . previousGetter
+          Extended{} | fwd -> Left $ errorMsg thisKind versionNotFound
+          Extended a_kind -> do
+            let rev_proxy :: Proxy (MigrateFrom (Reverse a))
+                rev_proxy = Proxy
+                forwardGetter :: Either String (Value -> Contained a)
+                forwardGetter  = fmap ((contain . unReverse . migrate . unsafeUnPack) .) $ worker True (castVersion thisVersion) (kindFromProxy rev_proxy)
+                previousGetter :: Either String (Value -> Contained a)
+                previousGetter = worker fwd (castVersion thisVersion) a_kind
+            case forwardGetter of
+              Left{}    -> previousGetter
+              Right val -> Right val
+    versionNotFound   = "Cannot find getter associated with this version number: " ++ show diskVersion
+    errorMsg fail_kind msg =
+        concat
+         [ "safecopy: "
+         , errorTypeName (proxyFromKind fail_kind)
+         , ": "
+         , msg
+         ]
 
 -- constructGetterFromVersion :: SafeCopy a => Version a -> Kind (MigrateFrom (Reverse a)) -> Get (Get a)
 constructGetterFromVersion :: SafeCopy a => Version a -> Kind a -> Either String (Get a)
@@ -386,6 +419,21 @@ getSafeGet
                           Left msg     -> fail msg
     where proxy = Proxy :: Proxy a
 
+-- | Parse a version tag and return the corresponding migrated parser. This is
+--   useful when you can prove that multiple values have the same version.
+--   See 'getSafePut'.
+getSafeGetValue :: forall a. SafeCopy a => Value -> a
+getSafeGetValue sv
+    = checkConsistency proxy $
+      case kindFromProxy proxy of
+        Primitive -> unsafeUnPack $ getValue sv
+        a_kind    -> case sv of
+          (OValue _ _ v _) -> case constructGetterFromVersion2 (Version v) a_kind of
+            Right getter -> unsafeUnPack $ getter sv
+            Left msg     -> error msg
+          _                -> error "getSafeGetValue: expected OValue"
+    where proxy = Proxy :: Proxy a
+
 -- | Serialize a data type by first writing out its version tag. This is much
 --   simpler than the corresponding 'safeGet' since previous versions don't
 --   come into play.
@@ -397,8 +445,8 @@ safePut a
 safeValue :: SafeCopy a => a -> Value
 safeValue = getSafeValue
 
-safeValueGet :: SafeCopy a => Value -> a
-safeValueGet = undefined
+safeGetValue :: SafeCopy a => Value -> a
+safeGetValue = getSafeGetValue
 
 safePutWithKey :: SafeCopy a => Key -> a -> Put
 safePutWithKey k a
@@ -561,10 +609,10 @@ validChain a_proxy =
                   Extended sub_kind   -> check sub_kind
 
 -- Verify that the SafeCopy instance is consistent.
-checkConsistency :: (SafeCopy a, Monad m) => Proxy a -> m b -> m b
+checkConsistency :: SafeCopy a => Proxy a -> b -> b
 checkConsistency proxy ks
     = case consistentFromProxy proxy of
-        NotConsistent msg -> fail msg
+        NotConsistent msg -> error msg
         Consistent        -> ks
 
 {-# INLINE computeConsistency #-}
