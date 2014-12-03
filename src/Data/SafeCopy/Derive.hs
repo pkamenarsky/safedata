@@ -304,7 +304,7 @@ mkPutCopy tyName versionId deriveType cons = funD 'putCopy $ map mkPutClause con
       mkPutClause (conNumber, con)
           = do putVars <- replicateM (conSize con) (newName "arg")
                let putClause   = conP (conName con) (map varP putVars)
-                   putCopyBody = varE 'contain `appE` (conE 'OValue `appE` (litE $ stringL tyName)
+                   putCopyBody = varE 'contain `appE` (conE 'Object `appE` (litE $ stringL tyName)
                                                                     `appE` (litE $ integerL conNumber)
                                                                     `appE` (litE $ integerL $ versionId)
                                                                     `appE` listE
@@ -320,12 +320,12 @@ mkGetCopy deriveType tyName cons = do
 
     funD 'getCopy
          [ clause
-             [conP 'OValue [varP typ, varP cstr, varP version, varP kv]]
+             [conP 'Object [varP typ, varP cstr, varP version, varP kv]]
              (normalB $ varE 'contain `appE` getCopyBody cstr kv)
              []
          , clause
              [wildP]
-             (normalB $ varE 'error `appE` (litE $ stringL "getValue: expected OValue"))
+             (normalB $ varE 'error `appE` (litE $ stringL "getValue: expected Object"))
              []
          ]
     where

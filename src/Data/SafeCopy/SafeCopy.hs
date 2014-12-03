@@ -53,9 +53,8 @@ data Value = BValue Bool
            | BSValue BS.ByteString
            | BSLValue BSL.ByteString
 
-           | KValue Key [Value]
-           | OValue String Cstr Int32 [(Key, Value)]
-           | AValue [Value]
+           | Object String Cstr Int32 [(Key, Value)]
+           | Array [Value]
            deriving Show
 
 
@@ -130,8 +129,8 @@ class SafeCopy a where
     getCopy :: Value -> Contained a
 
     getCopies :: Value -> Contained [a]
-    getCopies (AValue vs) = contain $ map (unsafeUnPack . getCopy) vs
-    getCopies _           = error "getCopies: AValue expected"
+    getCopies (Array vs) = contain $ map (unsafeUnPack . getCopy) vs
+    getCopies _           = error "getCopies: Array expected"
 
     -- | This method defines how a value should be parsed without worrying about
     --   previous versions or migrations. This function cannot be used directly.
@@ -139,7 +138,7 @@ class SafeCopy a where
     putCopy :: a -> Contained Value
 
     putCopies :: [a] -> Contained Value
-    putCopies = contain . AValue . map (unsafeUnPack . putCopy)
+    putCopies = contain . Array . map (unsafeUnPack . putCopy)
 
     -- | Internal function that should not be overrided.
     --   @Consistent@ iff the version history is consistent
@@ -217,10 +216,10 @@ getSafeGet sv
       case kindFromProxy proxy of
         Primitive -> unsafeUnPack $ getCopy sv
         a_kind    -> case sv of
-          (OValue _ _ v _) -> case constructGetterFromVersion (Version v) a_kind of
+          (Object _ _ v _) -> case constructGetterFromVersion (Version v) a_kind of
             Right getter -> unsafeUnPack $ getter sv
             Left msg     -> error msg
-          _                -> error "getSafeGet: expected OValue"
+          _                -> error "getSafeGet: expected Object"
     where proxy = Proxy :: Proxy a
 
 -- | Serialize a data type by first writing out its version tag. This is much
