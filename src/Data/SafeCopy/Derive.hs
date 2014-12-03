@@ -332,10 +332,10 @@ mkPutCopy deriveType cons = funD 'putCopy $ map mkPutClause cons
 
 mkGetValue :: DeriveType -> String -> [(Integer, Con)] -> DecQ
 mkGetValue deriveType tyName cons = do
-    typ     <- newName "type"
-    cstr    <- newName "cstr"
-    version <- newName "version"
-    kv      <- newName "kv"
+    typ     <- newName "_type"
+    cstr    <- newName "_cstr"
+    version <- newName "_version"
+    kv      <- newName "_kv"
 
     funD 'getValue
          [ clause
