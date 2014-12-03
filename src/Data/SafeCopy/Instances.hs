@@ -45,6 +45,10 @@ import qualified Data.Vector.Primitive as VP
 import qualified Data.Vector.Storable as VS
 import qualified Data.Vector.Unboxed as VU
 
+instance SafeCopy a => SafeCopy [a] where
+    kind = primitive; putCopy = putCopies; getCopy = getCopies; errorTypeName = typeName1
+
+{-
 instance SafeCopy a => SafeCopy (Prim a) where
   kind = primitive
   getCopy = contain $
@@ -52,19 +56,6 @@ instance SafeCopy a => SafeCopy (Prim a) where
                return $ Prim e
   putCopy (Prim e)
     = contain $ unsafeUnPack (putCopy e)
-
-{-
-instance SafeCopy a => SafeCopy [a] where
-    getCopy = contain $
-              do n <- get
-                 getSafeGet >>= replicateM n
-    putCopy lst
-        = contain $
-          do put (length lst)
-             getSafePut >>= forM_ lst
-
-    errorTypeName = typeName1
--}
 
 instance SafeCopy a => SafeCopy (Maybe a) where
     getCopy = contain $ do n <- get
@@ -153,39 +144,48 @@ instance (SafeCopy a, SafeCopy b, SafeCopy c, SafeCopy d, SafeCopy e, SafeCopy f
                                      safeGet <*> safeGet <*> safeGet
     putCopy (a,b,c,d,e,f,g) = contain $ safePut a >> safePut b >> safePut c >> safePut d >>
                                         safePut e >> safePut f >> safePut g
+-}
 
-instance SafeCopy Int where
-    kind = primitive; getCopy = contain get; getValue (IValue v) = contain v; getValue _ = error "getValue: Int expected"; putCopy = contain . put; putValue = contain . IValue; errorTypeName = typeName
-instance SafeCopy Integer where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
-instance SafeCopy Float where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
-instance SafeCopy Double where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
-instance SafeCopy L.ByteString where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
-instance SafeCopy B.ByteString where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+instance SafeCopy Bool where
+  kind = primitive; getCopy (BValue v) = contain v; getCopy _ = error "getCopy: Bool expected"; putCopy = contain . BValue; errorTypeName = typeName
 instance SafeCopy Char where
-    kind = primitive; getCopy = contain get; getValue (CValue v) = contain v; getValue _ = error "getValue: Char expected"; getValues (SValue v) = contain v; getValues _ = error "getValues: [Char] expected"; putCopy = contain . put; putValue = contain . CValue; putValues = contain . SValue; errorTypeName = typeName
-instance SafeCopy Word8 where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
-instance SafeCopy Word16 where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
-instance SafeCopy Word32 where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
-instance SafeCopy Word64 where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
-instance SafeCopy Ordering where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+  kind = primitive; getCopy (CValue v) = contain v; getCopy _ = error "getCopy: Char expected"; getCopies (SValue v) = contain v; getCopies _ = error "getCopies: SValue expected"; putCopy = contain . CValue; putCopies = contain . SValue; errorTypeName = typeName
+instance SafeCopy Double where
+  kind = primitive; getCopy (DValue v) = contain v; getCopy _ = error "getCopy: Double expected"; putCopy = contain . DValue; errorTypeName = typeName
+instance SafeCopy Float where
+  kind = primitive; getCopy (FValue v) = contain v; getCopy _ = error "getCopy: Float expected"; putCopy = contain . FValue; errorTypeName = typeName
+instance SafeCopy Int where
+  kind = primitive; getCopy (IValue v) = contain v; getCopy _ = error "getCopy: Int expected"; putCopy = contain . IValue; errorTypeName = typeName
 instance SafeCopy Int8 where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+  kind = primitive; getCopy (I8Value v) = contain v; getCopy _ = error "getCopy: Int8 expected"; putCopy = contain . I8Value; errorTypeName = typeName
 instance SafeCopy Int16 where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+  kind = primitive; getCopy (I16Value v) = contain v; getCopy _ = error "getCopy: Int16 expected"; putCopy = contain . I16Value; errorTypeName = typeName
 instance SafeCopy Int32 where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+  kind = primitive; getCopy (I32Value v) = contain v; getCopy _ = error "getCopy: Int32 expected"; putCopy = contain . I32Value; errorTypeName = typeName
 instance SafeCopy Int64 where
-    kind = primitive; getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
+  kind = primitive; getCopy (I64Value v) = contain v; getCopy _ = error "getCopy: Int64 expected"; putCopy = contain . I64Value; errorTypeName = typeName
+instance SafeCopy Integer where
+  kind = primitive; getCopy (BIValue v) = contain v; getCopy _ = error "getCopy: Integer expected"; putCopy = contain . BIValue; errorTypeName = typeName
+instance SafeCopy Ordering where
+  kind = primitive; getCopy (OrdValue v) = contain v; getCopy _ = error "getCopy: Ordering expected"; putCopy = contain . OrdValue; errorTypeName = typeName
+instance SafeCopy Word where
+  kind = primitive; getCopy (WValue v) = contain v; getCopy _ = error "getCopy: Word expected"; putCopy = contain . WValue; errorTypeName = typeName
+instance SafeCopy Word8 where
+  kind = primitive; getCopy (W8Value v) = contain v; getCopy _ = error "getCopy: Word8 expected"; putCopy = contain . W8Value; errorTypeName = typeName
+instance SafeCopy Word16 where
+  kind = primitive; getCopy (W16Value v) = contain v; getCopy _ = error "getCopy: Word16 expected"; putCopy = contain . W16Value; errorTypeName = typeName
+instance SafeCopy Word32 where
+  kind = primitive; getCopy (W32Value v) = contain v; getCopy _ = error "getCopy: Word32 expected"; putCopy = contain . W32Value; errorTypeName = typeName
+instance SafeCopy Word64 where
+  kind = primitive; getCopy (W64Value v) = contain v; getCopy _ = error "getCopy: Word64 expected"; putCopy = contain . W64Value; errorTypeName = typeName
+instance SafeCopy () where
+  kind = primitive; getCopy (UValue v) = contain v; getCopy _ = error "getCopy: () expected"; putCopy = contain . UValue; errorTypeName = typeName
+instance SafeCopy B.ByteString where
+  kind = primitive; getCopy (BSValue v) = contain v; getCopy _ = error "getCopy: ByteString expected"; putCopy = contain . BSValue; errorTypeName = typeName
+instance SafeCopy L.ByteString where
+  kind = primitive; getCopy (BSLValue v) = contain v; getCopy _ = error "getCopy: ByteString expected"; putCopy = contain . BSLValue; errorTypeName = typeName
+
+{-
 instance (Integral a, SafeCopy a) => SafeCopy (Ratio a) where
     getCopy   = contain $ do n <- safeGet
                              d <- safeGet
@@ -398,3 +398,14 @@ instance (SafeCopy a, VS.Storable a) => SafeCopy (VS.Vector a) where
 instance (SafeCopy a, VU.Unbox a) => SafeCopy (VU.Vector a) where
     getCopy = getGenericVector
     putCopy = putGenericVector
+-}
+
+typeName :: Typeable a => Proxy a -> String
+typeName proxy = show (typeOf (undefined `asProxyType` proxy))
+
+typeName1 :: (Typeable1 c) => Proxy (c a) -> String
+typeName1 proxy = show (typeOf1 (undefined `asProxyType` proxy))
+
+typeName2 :: (Typeable2 c) => Proxy (c a b) -> String
+typeName2 proxy = show (typeOf2 (undefined `asProxyType` proxy))
+

@@ -23,19 +23,13 @@ module Data.SafeCopy.SafeCopy where
 
 import           Data.Int
 import           Data.List
-import           Data.Monoid
 import           Data.Word
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 
-import           Control.Applicative
-import           Control.Monad
-import           Control.Monad.Identity
-import           Control.Monad.Writer
-
 import           Data.Typeable
 
-type Key = String
+type Key  = String
 type Cstr = Word8
 
 data Value = BValue Bool
@@ -63,148 +57,6 @@ data Value = BValue Bool
            | OValue String Cstr Int32 [(Key, Value)]
            | AValue [Value]
            deriving Show
-
-class Serialize t where
-  put :: t -> Put
-  get :: Get t
-
-newtype Builder = Builder { unBuild :: [Value] } deriving Show
-
-value :: Value -> Builder
-value v = Builder [v]
-
-instance Monoid Builder where
-  mempty = Builder []
-  Builder vs `mappend` Builder vs' = Builder $ vs ++ vs'
-
-type PutM a = WriterT Builder Identity a
-type Put = PutM ()
-
-data Get a = Get { unGet :: a }
-
-label :: String -> Get a -> Get a
-label = undefined
-
-putWord8 :: Word8 -> Put
-putWord8 = put
-
-getWord8 :: Get Word8
-getWord8 = undefined
-
-instance Functor Get where
-  fmap = undefined
-
-instance Monad Get where
-  return = undefined
-  (>>=) = undefined
-
-typeName :: Typeable a => Proxy a -> String
-typeName proxy = show (typeOf (undefined `asProxyType` proxy))
-
-typeName1 :: (Typeable1 c) => Proxy (c a) -> String
-typeName1 proxy = show (typeOf1 (undefined `asProxyType` proxy))
-
-typeName2 :: (Typeable2 c) => Proxy (c a b) -> String
-typeName2 proxy = show (typeOf2 (undefined `asProxyType` proxy))
-
-
-instance SafeCopy a => SafeCopy [a] where
-    kind = primitive; getCopy = undefined; putCopy = undefined; putValue = putValues; getValue = getValues; errorTypeName = typeName1
-
-instance Applicative Get where
-  pure = undefined
-  (<*>) = undefined
-
-instance Serialize Bool where
-  put = tell . value . BValue
-  get = undefined
-
-instance Serialize Char where
-  put = tell . value . CValue
-  get = undefined
-
-instance Serialize Double where
-  put = tell . value . DValue
-  get = undefined
-
-instance Serialize Float where
-  put = tell . value . FValue
-  get = undefined
-
-instance Serialize Int where
-  put = tell . value . IValue
-  get = undefined
-
-instance Serialize Int8 where
-  put = tell . value . I8Value
-  get = undefined
-
-instance Serialize Int16 where
-  put = tell . value . I16Value
-  get = undefined
-
-instance Serialize Int32 where
-  put = tell . value . I32Value
-  get = undefined
-
-instance Serialize Int64 where
-  put = tell . value . I64Value
-  get = undefined
-
-instance Serialize Integer where
-  put = tell . value . BIValue
-  get = undefined
-
-instance Serialize Ordering where
-  put = tell . value . OrdValue
-  get = undefined
-
-instance Serialize Word where
-  put = tell . value . WValue
-  get = undefined
-
-instance Serialize Word8 where
-  put = tell . value . W8Value
-  get = undefined
-
-instance Serialize Word16 where
-  put = tell . value . W16Value
-  get = undefined
-
-instance Serialize Word32 where
-  put = tell . value . W32Value
-  get = undefined
-
-instance Serialize Word64 where
-  put = tell . value . W64Value
-  get = undefined
-
-instance Serialize () where
-  put = tell . value . UValue
-  get = undefined
-
-instance Serialize BS.ByteString where
-  put = tell . value . BSValue
-  get = undefined
-
-instance Serialize BSL.ByteString where
-  put = tell . value . BSLValue
-  get = undefined
-
-instance (SafeCopy a, SafeCopy Char) => Serialize [a] where
-  put vs = tell $ value $ mkAValue vs'
-    where
-      Builder vs' = execWriter $ mapM safePut vs
-
-      getChr (CValue c) = c
-      getChr _          = error "Serialize [a]:getChr: internal error"
-
-      mkAValue :: [Value] -> Value
-      mkAValue []                = AValue []
-      mkAValue vs''@(CValue _:_) = SValue $ map getChr vs''
-      mkAValue vs''              = AValue vs''
-
-  get = undefined
 
 
 -- | The central mechanism for dealing with version control.
@@ -275,23 +127,19 @@ class SafeCopy a where
     -- | This method defines how a value should be parsed without also worrying
     --   about writing out the version tag. This function cannot be used directly.
     --   One should use 'safeGet', instead.
-    getCopy  :: Contained (Get a)
+    getCopy :: Value -> Contained a
+
+    getCopies :: Value -> Contained [a]
+    getCopies (AValue vs) = contain $ map (unsafeUnPack . getCopy) vs
+    getCopies _           = error "getCopies: AValue expected"
 
     -- | This method defines how a value should be parsed without worrying about
     --   previous versions or migrations. This function cannot be used directly.
     --   One should use 'safeGet', instead.
-    putCopy  :: a -> Contained Put
+    putCopy :: a -> Contained Value
 
-    putValue :: a -> Contained Value
-
-    putValues :: [a] -> Contained Value
-    putValues = contain . AValue . map (unsafeUnPack . putValue)
-
-    getValue :: Value -> Contained a
-
-    getValues :: Value -> Contained [a]
-    getValues (AValue vs) = contain $ map (unsafeUnPack . getValue) vs
-    getValues _           = error "getValues: AValue expected"
+    putCopies :: [a] -> Contained Value
+    putCopies = contain . AValue . map (unsafeUnPack . putCopy)
 
     -- | Internal function that should not be overrided.
     --   @Consistent@ iff the version history is consistent
@@ -315,23 +163,14 @@ class SafeCopy a where
     errorTypeName :: Proxy a -> String
     errorTypeName _ = "<unkown type>"
 
-{-
-#ifdef DEFAULT_SIGNATURES
-    default getCopy :: Serialize a => Contained (Get a)
-    getCopy = contain get
 
-    default putCopy :: Serialize a => a -> Contained Put
-    putCopy = contain . put
-#endif
--}
-
-constructGetterFromVersion2 :: SafeCopy a => Version a -> Kind a -> Either String (Value -> Contained a)
-constructGetterFromVersion2 diskVersion orig_kind =
+constructGetterFromVersion :: SafeCopy a => Version a -> Kind a -> Either String (Value -> Contained a)
+constructGetterFromVersion diskVersion orig_kind =
   worker False diskVersion orig_kind
   where
     worker :: forall a. SafeCopy a => Bool -> Version a -> Kind a -> Either String (Value -> Contained a)
     worker fwd thisVersion thisKind
-      | version == thisVersion = return $ getValue
+      | version == thisVersion = return $ getCopy
       | otherwise =
         case thisKind of
           Primitive -> Left $ errorMsg thisKind "Cannot migrate from primitive types."
@@ -359,41 +198,6 @@ constructGetterFromVersion2 diskVersion orig_kind =
          , msg
          ]
 
--- constructGetterFromVersion :: SafeCopy a => Version a -> Kind (MigrateFrom (Reverse a)) -> Get (Get a)
-constructGetterFromVersion :: SafeCopy a => Version a -> Kind a -> Either String (Get a)
-constructGetterFromVersion diskVersion orig_kind =
-  worker False diskVersion orig_kind
-  where
-    worker :: forall a. SafeCopy a => Bool -> Version a -> Kind a -> Either String (Get a)
-    worker fwd thisVersion thisKind
-      | version == thisVersion = return $ unsafeUnPack getCopy
-      | otherwise =
-        case thisKind of
-          Primitive -> Left $ errorMsg thisKind "Cannot migrate from primitive types."
-          Base      -> Left $ errorMsg thisKind versionNotFound
-          Extends b_proxy -> do
-            previousGetter <- worker fwd (castVersion diskVersion) (kindFromProxy b_proxy)
-            return $ fmap migrate previousGetter
-          Extended{} | fwd -> Left $ errorMsg thisKind versionNotFound
-          Extended a_kind -> do
-            let rev_proxy :: Proxy (MigrateFrom (Reverse a))
-                rev_proxy = Proxy
-                forwardGetter :: Either String (Get a)
-                forwardGetter  = fmap (fmap (unReverse . migrate)) $ worker True (castVersion thisVersion) (kindFromProxy rev_proxy)
-                previousGetter :: Either String (Get a)
-                previousGetter = worker fwd (castVersion thisVersion) a_kind
-            case forwardGetter of
-              Left{}    -> previousGetter
-              Right val -> Right val
-    versionNotFound   = "Cannot find getter associated with this version number: " ++ show diskVersion
-    errorMsg fail_kind msg =
-        concat
-         [ "safecopy: "
-         , errorTypeName (proxyFromKind fail_kind)
-         , ": "
-         , msg
-         ]
-
 -------------------------------------------------
 -- The public interface. These functions are used
 -- to parse/serialize and to create new parsers &
@@ -401,90 +205,36 @@ constructGetterFromVersion diskVersion orig_kind =
 
 -- | Parse a version tagged data type and then migrate it to the desired type.
 --   Any serialized value has been extended by the return type can be parsed.
-safeGet :: SafeCopy a => Get a
-safeGet
-    = join getSafeGet
+safeGet :: SafeCopy a => Value -> a
+safeGet = getSafeGet
 
 -- | Parse a version tag and return the corresponding migrated parser. This is
 --   useful when you can prove that multiple values have the same version.
 --   See 'getSafePut'.
-getSafeGet :: forall a. SafeCopy a => Get (Get a)
-getSafeGet
+getSafeGet :: forall a. SafeCopy a => Value -> a
+getSafeGet sv
     = checkConsistency proxy $
       case kindFromProxy proxy of
-        Primitive -> return $ unsafeUnPack getCopy
-        a_kind    -> do v <- get
-                        case constructGetterFromVersion v a_kind of
-                          Right getter -> return getter
-                          Left msg     -> fail msg
-    where proxy = Proxy :: Proxy a
-
--- | Parse a version tag and return the corresponding migrated parser. This is
---   useful when you can prove that multiple values have the same version.
---   See 'getSafePut'.
-getSafeGetValue :: forall a. SafeCopy a => Value -> a
-getSafeGetValue sv
-    = checkConsistency proxy $
-      case kindFromProxy proxy of
-        Primitive -> unsafeUnPack $ getValue sv
+        Primitive -> unsafeUnPack $ getCopy sv
         a_kind    -> case sv of
-          (OValue _ _ v _) -> case constructGetterFromVersion2 (Version v) a_kind of
+          (OValue _ _ v _) -> case constructGetterFromVersion (Version v) a_kind of
             Right getter -> unsafeUnPack $ getter sv
             Left msg     -> error msg
-          _                -> error "getSafeGetValue: expected OValue"
+          _                -> error "getSafeGet: expected OValue"
     where proxy = Proxy :: Proxy a
 
 -- | Serialize a data type by first writing out its version tag. This is much
 --   simpler than the corresponding 'safeGet' since previous versions don't
 --   come into play.
-safePut :: SafeCopy a => a -> Put
-safePut a
-    = do putter <- getSafePut
-         putter a
+safePut :: SafeCopy a => a -> Value
+safePut = getSafePut
 
-safeValue :: SafeCopy a => a -> Value
-safeValue = getSafeValue
-
-safeGetValue :: SafeCopy a => Value -> a
-safeGetValue = getSafeGetValue
-
-safePutWithKey :: SafeCopy a => Key -> a -> Put
-safePutWithKey k a
-    = do putter <- getSafePutWithKey
-         putter k a
-
-getSafeValue :: forall a. SafeCopy a => (a -> Value)
-getSafeValue
-    = checkConsistency proxy $
-      case kindFromProxy proxy of
-        Primitive -> \a -> unsafeUnPack (putValue $ asProxyType a proxy)
-        _         -> \a -> unsafeUnPack (putValue $ asProxyType a proxy)
-    where proxy = Proxy :: Proxy a
-
--- | Serialize the version tag and return the associated putter. This is useful
---   when serializing multiple values with the same version. See 'getSafeGet'.
-getSafePut :: forall a. SafeCopy a => PutM (a -> Put)
+getSafePut :: forall a. SafeCopy a => (a -> Value)
 getSafePut
     = checkConsistency proxy $
       case kindFromProxy proxy of
-        Primitive -> return $ \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
-        _         -> do put (versionFromProxy proxy)
-                        return $ \a -> do
-                          tell $ value $ KValue "_version" $ unBuild $ execWriter $ put (versionFromProxy proxy)
-                          unsafeUnPack (putCopy $ asProxyType a proxy)
-    where proxy = Proxy :: Proxy a
-
-getSafePutWithKey :: forall a. SafeCopy a => PutM (Key -> a -> Put)
-getSafePutWithKey
-    = checkConsistency proxy $
-      case kindFromProxy proxy of
-        Primitive -> return $ \k a ->
-                        tell $ value $ KValue k $ unBuild $ execWriter $ unsafeUnPack (putCopy $ asProxyType a proxy)
-        _         -> do
-                        return $ \k a -> do
-                          tell $ value $ KValue k $ unBuild $ execWriter $ do
-                            tell $ value $ KValue "_version" $ unBuild $ execWriter $ put (versionFromProxy proxy)
-                            unsafeUnPack (putCopy $ asProxyType a proxy)
+        Primitive -> \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
+        _         -> \a -> unsafeUnPack (putCopy $ asProxyType a proxy)
     where proxy = Proxy :: Proxy a
 
 -- | The extended_base kind lets the system know that there is
@@ -533,10 +283,6 @@ instance Num (Version a) where
     abs (Version a) = Version (abs a)
     signum (Version a) = Version (signum a)
     fromInteger i = Version (fromInteger i)
-
-instance Serialize (Version a) where
-    get = liftM Version get
-    put = put . unVersion
 
 -------------------------------------------------
 -- Container type to control the access to the
