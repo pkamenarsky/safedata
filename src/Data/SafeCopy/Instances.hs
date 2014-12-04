@@ -14,10 +14,12 @@ import qualified Data.ByteString.Lazy.Char8 as L
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Foldable as Foldable
 import           Data.Fixed (HasResolution, Fixed)
+import qualified Data.Foldable as F
 import           Data.Int
 import qualified Data.IntMap as IntMap
 import qualified Data.IntSet as IntSet
 import           Data.Ix
+import           Data.Monoid
 import qualified Data.Map as Map
 import           Data.Ratio (Ratio, (%), numerator, denominator)
 import qualified Data.Sequence as Sequence
@@ -46,7 +48,7 @@ import qualified Data.Vector.Storable as VS
 import qualified Data.Vector.Unboxed as VU
 
 instance SafeCopy a => SafeCopy [a] where
-    kind = primitive; putCopy = putCopies; getCopy = getCopies; errorTypeName = typeName1
+  putCopy = putCopies; getCopy = getCopies; errorTypeName = typeName1
 
 {-
 instance SafeCopy a => SafeCopy (Prim a) where
@@ -56,57 +58,62 @@ instance SafeCopy a => SafeCopy (Prim a) where
                return $ Prim e
   putCopy (Prim e)
     = contain $ unsafeUnPack (putCopy e)
+-}
 
 instance SafeCopy a => SafeCopy (Maybe a) where
-    getCopy = contain $ do n <- get
-                           if n then liftM Just safeGet
-                                else return Nothing
-    putCopy (Just a) = contain $ put True >> safePut a
-    putCopy Nothing = contain $ put False
+    getCopy (Array [])  = contain Nothing
+    getCopy (Array [v]) = contain $ Just $ safeGet v
+    getCopy _           = error "Maybe:getCopy: expecting Array with one element"
+
+    putCopy (Just a)    = contain $ Array [safePut a]
+    putCopy Nothing     = contain $ Array []
+
     errorTypeName = typeName1
 
 instance (SafeCopy a, Ord a) => SafeCopy (Set.Set a) where
-    getCopy = contain $ fmap Set.fromDistinctAscList safeGet
-    putCopy = contain . safePut . Set.toAscList
-    errorTypeName = typeName1
+    getCopy (Array vs) = contain $ Set.fromDistinctAscList $ map safeGet vs
+    getCopy _          = error "Set:getCopy: expecting Array"
+    putCopy            = contain . safePut . Set.toAscList
+    errorTypeName      = typeName1
 
 instance (SafeCopy a, SafeCopy b, Ord a) => SafeCopy (Map.Map a b) where
-    getCopy = contain $ fmap Map.fromDistinctAscList safeGet
-    putCopy = contain . safePut . Map.toAscList
-    errorTypeName = typeName2
+    getCopy (Array vs) = contain $ Map.fromDistinctAscList $ map safeGet vs
+    getCopy _          = error "Map:getCopy: expecting Array"
+    putCopy            = contain . safePut . Map.toAscList
+    errorTypeName      = typeName2
 
 instance (SafeCopy a) => SafeCopy (IntMap.IntMap a) where
-    getCopy = contain $ fmap IntMap.fromDistinctAscList safeGet
-    putCopy = contain . safePut . IntMap.toAscList
-    errorTypeName = typeName1
+    getCopy (Array vs) = contain $ IntMap.fromDistinctAscList $ map safeGet vs
+    getCopy _          = error "IntMap:getCopy: expecting Array"
+    putCopy            = contain . safePut . IntMap.toAscList
+    errorTypeName      = typeName1
 
 instance SafeCopy IntSet.IntSet where
-    getCopy = contain $ fmap IntSet.fromDistinctAscList safeGet
-    putCopy = contain . safePut . IntSet.toAscList
-    errorTypeName = typeName
+    getCopy (Array vs) = contain $ IntSet.fromDistinctAscList $ map safeGet vs
+    getCopy _          = error "IntSet:getCopy: expecting Array"
+    putCopy            = contain . safePut . IntSet.toAscList
+    errorTypeName      = typeName
 
 instance (SafeCopy a) => SafeCopy (Sequence.Seq a) where
-    getCopy = contain $ fmap Sequence.fromList safeGet
-    putCopy = contain . safePut . Foldable.toList
-    errorTypeName = typeName1
+    getCopy (Array vs) = contain $ Sequence.fromList $ map safeGet vs
+    getCopy _          = error "Sequence:getCopy: expecting Array"
+    putCopy            = contain . safePut . Foldable.toList
+    errorTypeName      = typeName1
 
 instance (SafeCopy a) => SafeCopy (Tree.Tree a) where
-    getCopy = contain $ liftM2 Tree.Node safeGet safeGet
-    putCopy (Tree.Node root sub) = contain $ safePut root >> safePut sub
-    errorTypeName = typeName1
+    getCopy (Array [a, b])       = contain $ Tree.Node (safeGet a) (safeGet b)
+    getCopy _                    = error "Tree:getCopy: expecting Array with 2 elements"
+    putCopy (Tree.Node root sub) = contain $ Array [safePut root, safePut sub]
+    errorTypeName                = typeName1
 
-iarray_getCopy :: (Ix i, SafeCopy e, SafeCopy i, IArray.IArray a e) => Contained (Get (a i e))
-iarray_getCopy = contain $ do getIx <- getSafeGet
-                              liftM3 mkArray getIx getIx safeGet
-    where
-      mkArray l h xs = IArray.listArray (l, h) xs
+iarray_getCopy :: (Ix i, SafeCopy e, SafeCopy i, IArray.IArray a e) => Value -> Contained (a i e)
+iarray_getCopy (Array [l, h, vs]) = contain $ IArray.listArray (safeGet l, safeGet h) (safeGet vs)
+iarray_getCopy _                  = error "iarray_getCopy: expecting Array with 3 elements"
 {-# INLINE iarray_getCopy #-}
 
-iarray_putCopy :: (Ix i, SafeCopy e, SafeCopy i, IArray.IArray a e) => a i e -> Contained Put
-iarray_putCopy arr = contain $ do putIx <- getSafePut
-                                  let (l,h) = IArray.bounds arr
-                                  putIx l >> putIx h
-                                  safePut (IArray.elems arr)
+iarray_putCopy :: (Ix i, SafeCopy e, SafeCopy i, IArray.IArray a e) => a i e -> Contained Value
+iarray_putCopy arr = contain $ Array [safePut l, safePut h, safePut (IArray.elems arr)]
+  where (l, h) = IArray.bounds arr
 {-# INLINE iarray_putCopy #-}
 
 instance (Ix i, SafeCopy e, SafeCopy i) => SafeCopy (Array.Array i e) where
@@ -119,10 +126,13 @@ instance (IArray.IArray UArray.UArray e, Ix i, SafeCopy e, SafeCopy i) => SafeCo
     putCopy = iarray_putCopy
     errorTypeName = typeName2
 
+
 instance (SafeCopy a, SafeCopy b) => SafeCopy (a,b) where
-    getCopy = contain $ liftM2 (,) safeGet safeGet
-    putCopy (a,b) = contain $ safePut a >> safePut b
-    errorTypeName = typeName2
+    getCopy (Array [a, b]) = contain (safeGet a, safeGet b)
+    getCopy _              = error "(,):getCopy: expecting Array with 2 elements"
+    putCopy (a, b)         = contain $ Array [safePut a, safePut b]
+    errorTypeName          = typeName2
+{-
 instance (SafeCopy a, SafeCopy b, SafeCopy c) => SafeCopy (a,b,c) where
     getCopy = contain $ liftM3 (,,) safeGet safeGet safeGet
     putCopy (a,b,c) = contain $ safePut a >> safePut b >> safePut c

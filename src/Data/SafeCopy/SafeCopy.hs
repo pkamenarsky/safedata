@@ -219,7 +219,7 @@ getSafeGet sv
           (Object _ _ v _) -> case constructGetterFromVersion (Version v) a_kind of
             Right getter -> unsafeUnPack $ getter sv
             Left msg     -> error msg
-          _                -> error "getSafeGet: expected Object"
+          _                -> unsafeUnPack $ getCopy sv
     where proxy = Proxy :: Proxy a
 
 -- | Serialize a data type by first writing out its version tag. This is much
