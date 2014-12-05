@@ -322,7 +322,7 @@ mkPutCopy tyName versionId deriveType cons = funD 'putCopy $ map mkPutClause con
                                                                     `appE` (litE $ integerL conNumber)
                                                                     `appE` (litE $ integerL $ versionId)
                                                                     `appE` listE
-                                   [ tupE [ litE $ stringL $ nameBase name, varE 'safePut `appE` varE var ] | (typ, name, var) <- zip3 (conTypes con) (conNames con) putVars ])
+                                   [ tupE [ litE $ stringL $ stripField $ nameBase name, varE 'safePut `appE` varE var ] | (typ, name, var) <- zip3 (conTypes con) (conNames con) putVars ])
                clause [putClause] (normalB putCopyBody) []
 
 mkGetCopy :: DeriveType -> String -> [(Integer, Con)] -> DecQ
@@ -354,7 +354,7 @@ mkGetCopy deriveType tyName cons = do
         where
           error' t     = varE 'error `appE` (litE $ stringL "Field can't be found")
           fromMaybe' t = varE 'fromMaybe `appE` (error' t)
-          lookup' t    = fromMaybe' t `appE` (varE 'lookup `appE` (litE $ stringL $ nameBase t) `appE` (varE kv))
+          lookup' t    = fromMaybe' t `appE` (varE 'lookup `appE` (litE $ stringL $ stripField $ nameBase t) `appE` (varE kv))
 
           go a []      = a
           go a (t:ts)  = go a ts `appE` (varE 'safeGet `appE` lookup' t)
@@ -412,6 +412,9 @@ followMigrationChain t = do
       findMF _ []     = []
       findMF mfs [ty] = mftys ++ findMF mfs mftys
         where mftys = [ mf | TySynInstD _ [ity] mf <- mfs, ty == ity ]
+
+stripField :: String -> String
+stripField = fst . break (== '_')
 
 conSize :: Con -> Int
 conSize (NormalC _name args) = length args
