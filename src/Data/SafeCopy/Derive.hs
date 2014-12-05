@@ -398,9 +398,8 @@ followMigrationChain t = do
     where
       findMF :: [Dec] -> [Type] -> [Type]
       findMF _ []     = []
-      findMF mfs [ty] = case [ mf | TySynInstD _ [ity] mf <- mfs, ty == ity ] of
-        [mf'] -> mf':findMF mfs [mf']
-        _     -> []
+      findMF mfs [ty] = mftys ++ findMF mfs mftys
+        where mftys = [ mf | TySynInstD _ [ity] mf <- mfs, ty == ity ]
 
 conSize :: Con -> Int
 conSize (NormalC _name args) = length args
