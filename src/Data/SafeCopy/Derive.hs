@@ -24,10 +24,12 @@ import Language.Haskell.TH hiding (Kind(..))
 #endif
 import Control.Applicative
 import Control.Monad
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 #ifdef __HADDOCK__
 import Data.Word (Word8) -- Haddock
 #endif
+
+import Debug.Trace
 
 -- | Derive an instance of 'SafeCopy'.
 --
@@ -386,6 +388,19 @@ followSynonyms t@(ConT name)
 followSynonyms (AppT ty1 ty2) = liftM2 AppT (followSynonyms ty1) (followSynonyms ty2)
 followSynonyms (SigT ty k)    = liftM (flip SigT k) (followSynonyms ty)
 followSynonyms t              = return t
+
+-- | Follow migration chain. Returns chain in most-recent to
+-- least-recent order.
+followMigrationChain :: Type -> Q [Type]
+followMigrationChain t = do
+  FamilyI _ mfs <- reify ''MigrateFrom
+  return $ findMF mfs [t]
+    where
+      findMF :: [Dec] -> [Type] -> [Type]
+      findMF _ []     = []
+      findMF mfs [ty] = case [ mf | TySynInstD _ [ity] mf <- mfs, ty == ity ] of
+        [mf'] -> mf':findMF mfs [mf']
+        _     -> []
 
 conSize :: Con -> Int
 conSize (NormalC _name args) = length args
