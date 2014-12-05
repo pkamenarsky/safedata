@@ -94,6 +94,7 @@ module Data.SafeCopy
 
       -- * Template haskell functions
     , deriveSafeCopy
+    , deriveSafeCopyAll
     , deriveSafeCopyIndexedType
     , deriveSafeCopySimple
     , deriveSafeCopySimpleIndexedType

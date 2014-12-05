@@ -8,6 +8,7 @@
 module Data.SafeCopy.Derive
     (
       deriveSafeCopy
+    , deriveSafeCopyAll
     , deriveSafeCopyIndexedType
     , deriveSafeCopySimple
     , deriveSafeCopySimpleIndexedType
@@ -118,6 +119,9 @@ import Debug.Trace
 --   version without any problems.
 deriveSafeCopy :: Version a -> Name -> Name -> Q [Dec]
 deriveSafeCopy = internalDeriveSafeCopy Normal
+
+deriveSafeCopyAll :: Name -> Q [Dec]
+deriveSafeCopyAll = internalDeriveSafeCopyAll Normal
 
 deriveSafeCopyIndexedType :: Version a -> Name -> Name -> [Name] -> Q [Dec]
 deriveSafeCopyIndexedType = internalDeriveSafeCopyIndexedType Normal
@@ -232,6 +236,14 @@ data DeriveType = Normal | Simple | HappstackData
 forceTag :: DeriveType -> Bool
 forceTag HappstackData = True
 forceTag _             = False
+
+internalDeriveSafeCopyAll :: DeriveType -> Name -> Q [Dec]
+internalDeriveSafeCopyAll deriveType tyName = do
+  mfs <- followMigrationChain $ ConT tyName
+  concat <$> sequence
+    [ internalDeriveSafeCopy deriveType (Version v) b t
+    | (v, b, ConT t) <- zip3 [0..] ('base:repeat 'extension) (reverse mfs)
+    ]
 
 internalDeriveSafeCopy :: DeriveType -> Version a -> Name -> Name -> Q [Dec]
 internalDeriveSafeCopy deriveType versionId kindName tyName = do
@@ -394,7 +406,7 @@ followSynonyms t              = return t
 followMigrationChain :: Type -> Q [Type]
 followMigrationChain t = do
   FamilyI _ mfs <- reify ''MigrateFrom
-  return $ findMF mfs [t]
+  return $ t:findMF mfs [t]
     where
       findMF :: [Dec] -> [Type] -> [Type]
       findMF _ []     = []
