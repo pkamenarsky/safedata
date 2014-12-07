@@ -195,19 +195,18 @@ instance SafeCopy B.ByteString where
 instance SafeCopy L.ByteString where
   kind = primitive; getCopy (BSLValue v) = contain v; getCopy _ = error "getCopy: ByteString expected"; putCopy = contain . BSLValue; errorTypeName = typeName
 
-{-
 instance (Integral a, SafeCopy a) => SafeCopy (Ratio a) where
-    getCopy   = contain $ do n <- safeGet
-                             d <- safeGet
-                             return (n % d)
-    putCopy r = contain $ do safePut (numerator   r)
-                             safePut (denominator r)
-    errorTypeName = typeName1
+    getCopy (Array [a, b]) = contain (safeGet a % safeGet b)
+    getCopy _              = error "Ratio:getCopy: expecting Array with 2 elements"
+    putCopy v              = contain $ Array [safePut $ numerator v, safePut $ denominator v]
+    errorTypeName          = typeName1
 instance (HasResolution a, Fractional (Fixed a)) => SafeCopy (Fixed a) where
-    getCopy   = contain $ fromRational <$> safeGet
-    putCopy   = contain . safePut . toRational
-    errorTypeName = typeName1
+    getCopy (Array [a, b]) = contain $ fromRational (safeGet a % safeGet b)
+    getCopy _              = error "Fixed:getCopy: expecting Array with 1 element"
+    putCopy                = contain . safePut . toRational
+    errorTypeName          = typeName1
 
+{-
 instance SafeCopy () where
     getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
 instance SafeCopy Bool where

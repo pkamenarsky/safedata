@@ -90,6 +90,7 @@ module Data.SafeCopy
     , base
     , Contained
     , contain
+    , Value (..)
     , Version
 
       -- * Template haskell functions

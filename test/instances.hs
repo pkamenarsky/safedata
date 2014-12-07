@@ -18,7 +18,6 @@ import Data.Data.Lens
 import Data.Fixed (Fixed, E1)
 import Data.List
 import Data.SafeCopy
-import Data.Serialize (runPut, runGet)
 import Data.Time (UniversalTime(..), ZonedTime(..))
 import Data.Tree (Tree)
 import Language.Haskell.TH
@@ -71,8 +70,8 @@ Right a === b = printTestCase (show a) $ a == b
 -- @decode@ is the inverse of @encode@ if we ignore bottom.
 prop_inverse :: (SafeCopy a, Arbitrary a, Eq a, Show a) => a -> Property
 prop_inverse a = (decode . encode) a === a where
-    encode = runPut . safePut
-    decode = runGet safeGet
+    encode = safePut
+    decode = Right . safeGet
 
 -- | Test the 'prop_inverse' property against all 'SafeCopy' instances
 -- (that also satisfy the rest of the constraints) defaulting any type
