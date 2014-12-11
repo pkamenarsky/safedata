@@ -6,5 +6,4 @@ SafeData
 
 SafeData (a fork of [SafeCopy](https://github.com/acid-state/safecopy)) provides nested
 version control.  Nested version control means that you can change the
-definition and binary format of a type nested deep within other types without
-problems.
+definition of a type nested deep within other types without problems.
