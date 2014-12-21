@@ -5,8 +5,6 @@ module Data.SafeData.Instances where
 
 import Data.SafeData.SafeData
 
-import           Control.Applicative
-import           Control.Monad
 import qualified Data.Array as Array
 import qualified Data.Array.Unboxed as UArray
 import qualified Data.Array.IArray as IArray
@@ -14,12 +12,10 @@ import qualified Data.ByteString.Lazy.Char8 as L
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Foldable as Foldable
 import           Data.Fixed (HasResolution, Fixed)
-import qualified Data.Foldable as F
 import           Data.Int
 import qualified Data.IntMap as IntMap
 import qualified Data.IntSet as IntSet
 import           Data.Ix
-import           Data.Monoid
 import qualified Data.Map as Map
 import           Data.Ratio (Ratio, (%), numerator, denominator)
 import qualified Data.Sequence as Sequence
@@ -40,7 +36,7 @@ import           Data.Typeable hiding (Proxy)
 import           Data.Typeable
 #endif
 import           Data.Word
-import           System.Time (ClockTime(..), TimeDiff(..), CalendarTime(..), Month(..))
+import           System.Time (ClockTime(..), TimeDiff(..), CalendarTime(..), Month(..), addToClockTime, diffClockTimes, toUTCTime, toClockTime)
 import qualified System.Time as OT
 import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
@@ -321,71 +317,32 @@ instance SafeData AbsoluteTime where
       fromAbsoluteTime at = diffAbsoluteTime at taiEpoch
   errorTypeName = typeName
 
-{-
 -- instances for old-time
 
+e12 :: Integer
+e12 = 1000000000000
+
 instance SafeData ClockTime where
-    kind = base
-    getCopy = contain $ do secs <- safeGet
-                           pico <- safeGet
-                           return (TOD secs pico)
-    putCopy (TOD secs pico) =
-              contain $ do safePut secs
-                           safePut pico
+    kind                    = primitive
+    getCopy (UTCValue t)    = contain $ TOD (t `div` e12) (t - (t `div` e12))
+    getCopy _               = error "ClockTime:getCopy: expecting UTCValue"
+    putCopy (TOD secs pico) = contain $ UTCValue $ secs * e12 + pico
 
 instance SafeData TimeDiff where
-    kind = base
-    getCopy   = contain $ do year    <- get
-                             month   <- get
-                             day     <- get
-                             hour    <- get
-                             mins    <- get
-                             sec     <- get
-                             pico    <- get
-                             return (TimeDiff year month day hour mins sec pico)
-    putCopy t = contain $ do put (tdYear t)
-                             put (tdMonth t)
-                             put (tdDay t)
-                             put (tdHour t)
-                             put (tdMin t)
-                             put (tdSec t)
-                             put (tdPicosec t)
+    kind                    = primitive
+    getCopy                 = contain . diffClockTimes (TOD 0 0) . safeGet
+    putCopy                 = contain . safePut . flip addToClockTime (TOD 0 0)
 
 instance SafeData OT.Day where
-    kind = base ; getCopy = contain $ toEnum <$> get ; putCopy = contain . put . fromEnum
+    kind = primitive ; getCopy = contain . toEnum . safeGet ; putCopy = contain . safePut . fromEnum
 
 instance SafeData Month where
-    kind = base ; getCopy = contain $ toEnum <$> get ; putCopy = contain . put . fromEnum
-
+    kind = primitive ; getCopy = contain . toEnum . safeGet ; putCopy = contain . safePut . fromEnum
 
 instance SafeData CalendarTime where
-    kind = base
-    getCopy   = contain $ do year   <- get
-                             month  <- safeGet
-                             day    <- get
-                             hour   <- get
-                             mins   <- get
-                             sec    <- get
-                             pico   <- get
-                             wday   <- safeGet
-                             yday   <- get
-                             tzname <- safeGet
-                             tz     <- get
-                             dst    <- get
-                             return (CalendarTime year month day hour mins sec pico wday yday tzname tz dst)
-    putCopy t = contain $ do put     (ctYear t)
-                             safePut (ctMonth t)
-                             put     (ctDay t)
-                             put     (ctHour t)
-                             put     (ctMin t)
-                             put     (ctSec t)
-                             put     (ctPicosec t)
-                             safePut (ctWDay t)
-                             put     (ctYDay t)
-                             safePut (ctTZName t)
-                             put     (ctTZ t)
-                             put     (ctIsDST t)
--}
+    kind                    = primitive
+    getCopy                 = contain . toUTCTime . safeGet
+    putCopy                 = contain . safePut . toClockTime
 
 getGenericVector :: (SafeData a, VG.Vector v a) => Value -> Contained (v a)
 getGenericVector = contain . VG.fromList . safeGet
