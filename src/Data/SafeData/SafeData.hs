@@ -52,6 +52,7 @@ data Value = BValue Bool
            | UValue ()
            | BSValue BS.ByteString
            | BSLValue BSL.ByteString
+           | UTCValue Integer
 
            | Object String Cstr Int32 [(Key, Value)]
            | Array [Value]

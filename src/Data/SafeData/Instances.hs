@@ -29,9 +29,10 @@ import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
 import           Data.Time.Calendar (Day(..))
-import           Data.Time.Clock (DiffTime, NominalDiffTime, UniversalTime(..), UTCTime(..))
+import           Data.Time.Clock (DiffTime, NominalDiffTime, UniversalTime(..), UTCTime(..), picosecondsToDiffTime)
+import           Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import           Data.Time.Clock.TAI (AbsoluteTime, taiEpoch, addAbsoluteTime, diffAbsoluteTime)
-import           Data.Time.LocalTime (LocalTime(..), TimeOfDay(..), TimeZone(..), ZonedTime(..))
+import           Data.Time.LocalTime (LocalTime(..), TimeOfDay(..), TimeZone(..), ZonedTime(..), timeToTimeOfDay, timeOfDayToTime)
 import qualified Data.Tree as Tree
 #if MIN_VERSION_base(4,7,0)
 import           Data.Typeable hiding (Proxy)
@@ -69,6 +70,19 @@ instance SafeData a => SafeData (Maybe a) where
     putCopy Nothing     = contain $ Array []
 
     errorTypeName = typeName1
+
+instance (SafeData a, SafeData b) => SafeData (Either a b) where
+    getCopy (Array [])  = error "Either:getCopy: expecting Array with 2 elements"
+    getCopy (Array [BValue True, v])
+                        = contain $ Right $ safeGet v
+    getCopy (Array [BValue False, v])
+                        = contain $ Left $ safeGet v
+    getCopy _           = error "Maybe:getCopy: expecting Array with 2 elements"
+
+    putCopy (Right a)   = contain $ Array [BValue True, safePut a]
+    putCopy (Left a)    = contain $ Array [BValue False, safePut a]
+
+    errorTypeName = typeName2
 
 instance (SafeData a, Ord a) => SafeData (Set.Set a) where
     getCopy (Array vs) = contain $ Set.fromDistinctAscList $ map safeGet vs
@@ -132,29 +146,33 @@ instance (SafeData a, SafeData b) => SafeData (a,b) where
     getCopy _              = error "(,):getCopy: expecting Array with 2 elements"
     putCopy (a, b)         = contain $ Array [safePut a, safePut b]
     errorTypeName          = typeName2
-{-
 instance (SafeData a, SafeData b, SafeData c) => SafeData (a,b,c) where
-    getCopy = contain $ liftM3 (,,) safeGet safeGet safeGet
-    putCopy (a,b,c) = contain $ safePut a >> safePut b >> safePut c
+    getCopy (Array [a, b, c]) = contain (safeGet a, safeGet b, safeGet c)
+    getCopy _              = error "(,):getCopy: expecting Array with 3 elements"
+    putCopy (a, b, c)      = contain $ Array [safePut a, safePut b, safePut c]
 instance (SafeData a, SafeData b, SafeData c, SafeData d) => SafeData (a,b,c,d) where
-    getCopy = contain $ liftM4 (,,,) safeGet safeGet safeGet safeGet
-    putCopy (a,b,c,d) = contain $ safePut a >> safePut b >> safePut c >> safePut d
-instance (SafeData a, SafeData b, SafeData c, SafeData d, SafeData e) =>
-         SafeData (a,b,c,d,e) where
-    getCopy = contain $ liftM5 (,,,,) safeGet safeGet safeGet safeGet safeGet
-    putCopy (a,b,c,d,e) = contain $ safePut a >> safePut b >> safePut c >> safePut d >> safePut e
-instance (SafeData a, SafeData b, SafeData c, SafeData d, SafeData e, SafeData f) =>
-         SafeData (a,b,c,d,e,f) where
-    getCopy = contain $ (,,,,,) <$> safeGet <*> safeGet <*> safeGet <*> safeGet <*> safeGet <*> safeGet
-    putCopy (a,b,c,d,e,f) = contain $ safePut a >> safePut b >> safePut c >> safePut d >>
-                                      safePut e >> safePut f
-instance (SafeData a, SafeData b, SafeData c, SafeData d, SafeData e, SafeData f, SafeData g) =>
-         SafeData (a,b,c,d,e,f,g) where
-    getCopy = contain $ (,,,,,,) <$> safeGet <*> safeGet <*> safeGet <*> safeGet <*>
-                                     safeGet <*> safeGet <*> safeGet
-    putCopy (a,b,c,d,e,f,g) = contain $ safePut a >> safePut b >> safePut c >> safePut d >>
-                                        safePut e >> safePut f >> safePut g
--}
+    getCopy (Array [a, b, c, d])
+                           = contain (safeGet a, safeGet b, safeGet c, safeGet d)
+    getCopy _              = error "(,):getCopy: expecting Array with 4 elements"
+    putCopy (a, b, c, d)   = contain $ Array [safePut a, safePut b, safePut c, safePut d]
+instance (SafeData a, SafeData b, SafeData c, SafeData d, SafeData e) => SafeData (a,b,c,d,e) where
+    getCopy (Array [a, b, c, d, e])
+                           = contain (safeGet a, safeGet b, safeGet c, safeGet d, safeGet e)
+    getCopy _              = error "(,):getCopy: expecting Array with 5 elements"
+    putCopy (a, b, c, d, e)
+                           = contain $ Array [safePut a, safePut b, safePut c, safePut d, safePut e]
+instance (SafeData a, SafeData b, SafeData c, SafeData d, SafeData e, SafeData f) => SafeData (a,b,c,d,e,f) where
+    getCopy (Array [a, b, c, d, e, f])
+                           = contain (safeGet a, safeGet b, safeGet c, safeGet d, safeGet e, safeGet f)
+    getCopy _              = error "(,):getCopy: expecting Array with 6 elements"
+    putCopy (a, b, c, d, e, f)
+                           = contain $ Array [safePut a, safePut b, safePut c, safePut d, safePut e, safePut f]
+instance (SafeData a, SafeData b, SafeData c, SafeData d, SafeData e, SafeData f, SafeData g) => SafeData (a,b,c,d,e,f,g) where
+    getCopy (Array [a, b, c, d, e, f, g])
+                           = contain (safeGet a, safeGet b, safeGet c, safeGet d, safeGet e, safeGet f, safeGet g)
+    getCopy _              = error "(,):getCopy: expecting Array with 7 elements"
+    putCopy (a, b, c, d, e, f, g)
+                           = contain $ Array [safePut a, safePut b, safePut c, safePut d, safePut e, safePut f, safePut g]
 
 instance SafeData Bool where
   kind = primitive; getCopy (BValue v) = contain v; getCopy _ = error "getCopy: Bool expected"; putCopy = contain . BValue; errorTypeName = typeName
@@ -206,111 +224,94 @@ instance (HasResolution a, Fractional (Fixed a)) => SafeData (Fixed a) where
     putCopy                = contain . safePut . toRational
     errorTypeName          = typeName1
 
-{-
-instance SafeData () where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
-instance SafeData Bool where
-    getCopy = contain get; putCopy = contain . put; errorTypeName = typeName
-instance (SafeData a, SafeData b) => SafeData (Either a b) where
-    getCopy = contain $ do n <- get
-                           if n then liftM Right safeGet
-                                else liftM Left safeGet
-    putCopy (Right a) = contain $ put True >> safePut a
-    putCopy (Left a) = contain $ put False >> safePut a
-
-    errorTypeName = typeName2
 
 --  instances for 'text' library
 
 instance SafeData T.Text where
     kind = base
-    getCopy = contain $ T.decodeUtf8 <$> safeGet
+    getCopy = contain . T.decodeUtf8 . safeGet
     putCopy = contain . safePut . T.encodeUtf8
     errorTypeName = typeName
 
 instance SafeData TL.Text where
     kind = base
-    getCopy = contain $ TL.decodeUtf8 <$> safeGet
+    getCopy = contain . TL.decodeUtf8 . safeGet
     putCopy = contain . safePut . TL.encodeUtf8
     errorTypeName = typeName
+
 
 -- instances for 'time' library
 
 instance SafeData Day where
-    kind = base
-    getCopy = contain $ ModifiedJulianDay <$> safeGet
-    putCopy = contain . safePut . toModifiedJulianDay
-    errorTypeName = typeName
+    kind                 = base
+    getCopy              = contain . ModifiedJulianDay . safeGet
+    putCopy              = contain . safePut . toModifiedJulianDay
+    errorTypeName        = typeName
 
 instance SafeData DiffTime where
-    kind = base
-    getCopy = contain $ fromRational <$> safeGet
-    putCopy = contain . safePut . toRational
-    errorTypeName = typeName
+    kind                 = primitive
+    getCopy (UTCValue v) = contain $ picosecondsToDiffTime v
+    getCopy _            = error "DiffTime:getCopy: expecting UTCValue"
+    putCopy              = contain . UTCValue . truncate
+    errorTypeName        = typeName
 
 instance SafeData UniversalTime where
-    kind = base
-    getCopy = contain $ ModJulianDate <$> safeGet
-    putCopy = contain . safePut . getModJulianDate
-    errorTypeName = typeName
+    kind                 = primitive
+    getCopy (UTCValue v) = contain $ ModJulianDate $ fromIntegral v
+    getCopy _            = error "UniversalTime:getCopy: expecting UTCValue"
+    putCopy              = contain . UTCValue . truncate . getModJulianDate
+    errorTypeName        = typeName
 
 instance SafeData UTCTime where
-    kind = base
-    getCopy   = contain $ do day      <- safeGet
-                             diffTime <- safeGet
-                             return (UTCTime day diffTime)
-    putCopy u = contain $ do safePut (utctDay u)
-                             safePut (utctDayTime u)
-    errorTypeName = typeName
+    kind                 = primitive
+    getCopy (UTCValue v) = contain $ posixSecondsToUTCTime $ fromIntegral v
+    getCopy _            = error "UTCTime:getCopy: expecting UTCValue"
+    putCopy              = contain . UTCValue . truncate . utcTimeToPOSIXSeconds
+    errorTypeName        = typeName
 
 instance SafeData NominalDiffTime where
-    kind = base
-    getCopy = contain $ fromRational <$> safeGet
-    putCopy = contain . safePut . toRational
-    errorTypeName = typeName
+    kind                 = primitive
+    getCopy (UTCValue v) = contain $ fromIntegral v
+    getCopy _            = error "NominalDiffTime:getCopy: expecting UTCValue"
+    putCopy              = contain . UTCValue . truncate
+    errorTypeName        = typeName
 
 instance SafeData TimeOfDay where
-    kind = base
-    getCopy   = contain $ do hour <- safeGet
-                             mins <- safeGet
-                             sec  <- safeGet
-                             return (TimeOfDay hour mins sec)
-    putCopy t = contain $ do safePut (todHour t)
-                             safePut (todMin t)
-                             safePut (todSec t)
-    errorTypeName = typeName
+    kind                 = primitive
+    getCopy (UTCValue v) = contain $ timeToTimeOfDay $ picosecondsToDiffTime v
+    getCopy _            = error "TimeOfDay:getCopy: expecting UTCValue"
+    putCopy              = contain . UTCValue . truncate . timeOfDayToTime
+    errorTypeName        = typeName
 
 instance SafeData TimeZone where
     kind = base
-    getCopy   = contain $ do mins       <- safeGet
-                             summerOnly <- safeGet
-                             zoneName   <- safeGet
-                             return (TimeZone mins summerOnly zoneName)
-    putCopy t = contain $ do safePut (timeZoneMinutes t)
-                             safePut (timeZoneSummerOnly t)
-                             safePut (timeZoneName t)
-    errorTypeName = typeName
+    getCopy (Array [mins, BValue summerOnly, SValue zoneName])
+                         = contain $ TimeZone (safeGet mins) summerOnly zoneName
+    getCopy _            = error "TimeZone:getCopy: expecting Array with 3 elements"
+    putCopy t            = contain $ Array [ safePut $ timeZoneMinutes t
+                                           , safePut $ timeZoneSummerOnly t
+                                           , safePut $ timeZoneName t
+                                           ]
+    errorTypeName        = typeName
 
 instance SafeData LocalTime where
-    kind = base
-    getCopy   = contain $ do day <- safeGet
-                             tod <- safeGet
-                             return (LocalTime day tod)
-    putCopy t = contain $ do safePut (localDay t)
-                             safePut (localTimeOfDay t)
-    errorTypeName = typeName
+    kind                   = base
+    getCopy (Array [day, tod])
+                           = contain $ LocalTime (safeGet day) (safeGet tod)
+    getCopy _              = error "LocalTime:getCopy: expecting Array with 2 elements"
+    putCopy t              = contain $ Array [safePut $ localDay t, safePut $ localTimeOfDay t]
+    errorTypeName          = typeName
 
 instance SafeData ZonedTime where
-    kind = base
-    getCopy   = contain $ do localTime <- safeGet
-                             timeZone  <- safeGet
-                             return (ZonedTime localTime timeZone)
-    putCopy t = contain $ do safePut (zonedTimeToLocalTime t)
-                             safePut (zonedTimeZone t)
-    errorTypeName = typeName
+    kind                   = base
+    getCopy (Array [lt, tz])
+                           = contain $ ZonedTime (safeGet lt) (safeGet tz)
+    getCopy _              = error "ZonedTime:getCopy: expecting Array with 2 elements"
+    putCopy t              = contain $ Array [safePut $ zonedTimeToLocalTime t, safePut $ zonedTimeZone t]
+    errorTypeName          = typeName
 
 instance SafeData AbsoluteTime where
-  getCopy = contain $ liftM toAbsoluteTime safeGet
+  getCopy = contain . toAbsoluteTime . safeGet
     where
       toAbsoluteTime :: DiffTime -> AbsoluteTime
       toAbsoluteTime dt = addAbsoluteTime dt taiEpoch
@@ -320,6 +321,7 @@ instance SafeData AbsoluteTime where
       fromAbsoluteTime at = diffAbsoluteTime at taiEpoch
   errorTypeName = typeName
 
+{-
 -- instances for old-time
 
 instance SafeData ClockTime where
@@ -383,14 +385,13 @@ instance SafeData CalendarTime where
                              safePut (ctTZName t)
                              put     (ctTZ t)
                              put     (ctIsDST t)
+-}
 
-getGenericVector :: (SafeData a, VG.Vector v a) => Contained (Get (v a))
-getGenericVector = contain $ do n <- get
-                                getSafeGet >>= VG.replicateM n
+getGenericVector :: (SafeData a, VG.Vector v a) => Value -> Contained (v a)
+getGenericVector = contain . VG.fromList . safeGet
 
-putGenericVector :: (SafeData a, VG.Vector v a) => v a -> Contained Put
-putGenericVector v = contain $ do put (VG.length v)
-                                  getSafePut >>= VG.forM_ v
+putGenericVector :: (SafeData a, VG.Vector v a) => v a -> Contained Value
+putGenericVector = contain . safePut . VG.toList
 
 instance SafeData a => SafeData (V.Vector a) where
     getCopy = getGenericVector
@@ -407,7 +408,6 @@ instance (SafeData a, VS.Storable a) => SafeData (VS.Vector a) where
 instance (SafeData a, VU.Unbox a) => SafeData (VU.Vector a) where
     getCopy = getGenericVector
     putCopy = putGenericVector
--}
 
 typeName :: Typeable a => Proxy a -> String
 typeName proxy = show (typeOf (undefined `asProxyType` proxy))
