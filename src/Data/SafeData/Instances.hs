@@ -175,33 +175,33 @@ instance SafeData Bool where
 instance SafeData Char where
   kind = primitive; getCopy (CValue v) = contain v; getCopy _ = error "getCopy: Char expected"; getCopies (SValue v) = contain v; getCopies _ = error "getCopies: SValue expected"; putCopy = contain . CValue; putCopies = contain . SValue; errorTypeName = typeName
 instance SafeData Double where
-  kind = primitive; getCopy (DValue v) = contain v; getCopy _ = error "getCopy: Double expected"; putCopy = contain . DValue; errorTypeName = typeName
+  kind = primitive; getCopy (DValue v) = contain v; getCopy (NValue v) = contain v; getCopy _ = error "getCopy: Double expected"; putCopy = contain . DValue; errorTypeName = typeName
 instance SafeData Float where
-  kind = primitive; getCopy (FValue v) = contain v; getCopy _ = error "getCopy: Float expected"; putCopy = contain . FValue; errorTypeName = typeName
+  kind = primitive; getCopy (FValue v) = contain v; getCopy (NValue v) = contain $ realToFrac v; getCopy _ = error "getCopy: Float expected"; putCopy = contain . FValue; errorTypeName = typeName
 instance SafeData Int where
-  kind = primitive; getCopy (IValue v) = contain v; getCopy _ = error "getCopy: Int expected"; putCopy = contain . IValue; errorTypeName = typeName
+  kind = primitive; getCopy (IValue v) = contain v; getCopy (NValue v) = contain $ round v; getCopy _ = error "getCopy: Int expected"; putCopy = contain . IValue; errorTypeName = typeName
 instance SafeData Int8 where
-  kind = primitive; getCopy (I8Value v) = contain v; getCopy _ = error "getCopy: Int8 expected"; putCopy = contain . I8Value; errorTypeName = typeName
+  kind = primitive; getCopy (I8Value v) = contain v; getCopy (NValue v) = contain $ round v; getCopy _ = error "getCopy: Int8 expected"; putCopy = contain . I8Value; errorTypeName = typeName
 instance SafeData Int16 where
-  kind = primitive; getCopy (I16Value v) = contain v; getCopy _ = error "getCopy: Int16 expected"; putCopy = contain . I16Value; errorTypeName = typeName
+  kind = primitive; getCopy (I16Value v) = contain v; getCopy (NValue v) = contain $ round v; getCopy _ = error "getCopy: Int16 expected"; putCopy = contain . I16Value; errorTypeName = typeName
 instance SafeData Int32 where
-  kind = primitive; getCopy (I32Value v) = contain v; getCopy _ = error "getCopy: Int32 expected"; putCopy = contain . I32Value; errorTypeName = typeName
+  kind = primitive; getCopy (I32Value v) = contain v; getCopy (NValue v) = contain $ round v; getCopy _ = error "getCopy: Int32 expected"; putCopy = contain . I32Value; errorTypeName = typeName
 instance SafeData Int64 where
-  kind = primitive; getCopy (I64Value v) = contain v; getCopy _ = error "getCopy: Int64 expected"; putCopy = contain . I64Value; errorTypeName = typeName
+  kind = primitive; getCopy (I64Value v) = contain v; getCopy (NValue v) = contain $ round v; getCopy _ = error "getCopy: Int64 expected"; putCopy = contain . I64Value; errorTypeName = typeName
 instance SafeData Integer where
-  kind = primitive; getCopy (BIValue v) = contain v; getCopy _ = error "getCopy: Integer expected"; putCopy = contain . BIValue; errorTypeName = typeName
+  kind = primitive; getCopy (BIValue v) = contain v; getCopy (NValue v) = contain $ round v; getCopy _ = error "getCopy: Integer expected"; putCopy = contain . BIValue; errorTypeName = typeName
 instance SafeData Ordering where
-  kind = primitive; getCopy (OrdValue v) = contain v; getCopy _ = error "getCopy: Ordering expected"; putCopy = contain . OrdValue; errorTypeName = typeName
+  kind = primitive; getCopy (OrdValue v) = contain v; getCopy (NValue v) = contain $ toEnum $ round v; getCopy _ = error "getCopy: Ordering expected"; putCopy = contain . OrdValue; errorTypeName = typeName
 instance SafeData Word where
-  kind = primitive; getCopy (WValue v) = contain v; getCopy _ = error "getCopy: Word expected"; putCopy = contain . WValue; errorTypeName = typeName
+  kind = primitive; getCopy (WValue v) = contain v; getCopy (NValue v) = contain $ round v; getCopy _ = error "getCopy: Word expected"; putCopy = contain . WValue; errorTypeName = typeName
 instance SafeData Word8 where
-  kind = primitive; getCopy (W8Value v) = contain v; getCopy _ = error "getCopy: Word8 expected"; putCopy = contain . W8Value; errorTypeName = typeName
+  kind = primitive; getCopy (W8Value v) = contain v; getCopy (NValue v) = contain $ round v; getCopy _ = error "getCopy: Word8 expected"; putCopy = contain . W8Value; errorTypeName = typeName
 instance SafeData Word16 where
-  kind = primitive; getCopy (W16Value v) = contain v; getCopy _ = error "getCopy: Word16 expected"; putCopy = contain . W16Value; errorTypeName = typeName
+  kind = primitive; getCopy (W16Value v) = contain v; getCopy (NValue v) = contain $ round v; getCopy _ = error "getCopy: Word16 expected"; putCopy = contain . W16Value; errorTypeName = typeName
 instance SafeData Word32 where
-  kind = primitive; getCopy (W32Value v) = contain v; getCopy _ = error "getCopy: Word32 expected"; putCopy = contain . W32Value; errorTypeName = typeName
+  kind = primitive; getCopy (W32Value v) = contain v; getCopy (NValue v) = contain $ round v; getCopy _ = error "getCopy: Word32 expected"; putCopy = contain . W32Value; errorTypeName = typeName
 instance SafeData Word64 where
-  kind = primitive; getCopy (W64Value v) = contain v; getCopy _ = error "getCopy: Word64 expected"; putCopy = contain . W64Value; errorTypeName = typeName
+  kind = primitive; getCopy (W64Value v) = contain v; getCopy (NValue v) = contain $ round v; getCopy _ = error "getCopy: Word64 expected"; putCopy = contain . W64Value; errorTypeName = typeName
 instance SafeData () where
   kind = primitive; getCopy (UValue v) = contain v; getCopy _ = error "getCopy: () expected"; putCopy = contain . UValue; errorTypeName = typeName
 instance SafeData B.ByteString where
@@ -247,6 +247,7 @@ instance SafeData Day where
 instance SafeData DiffTime where
     kind                 = primitive
     getCopy (UTCValue v) = contain $ picosecondsToDiffTime v
+    getCopy (NValue v)   = contain $ picosecondsToDiffTime $ round v
     getCopy _            = error "DiffTime:getCopy: expecting UTCValue"
     putCopy              = contain . UTCValue . truncate
     errorTypeName        = typeName
@@ -254,6 +255,7 @@ instance SafeData DiffTime where
 instance SafeData UniversalTime where
     kind                 = primitive
     getCopy (UTCValue v) = contain $ ModJulianDate $ fromIntegral v
+    getCopy (NValue v)   = contain $ ModJulianDate $ fromIntegral $ round v
     getCopy _            = error "UniversalTime:getCopy: expecting UTCValue"
     putCopy              = contain . UTCValue . truncate . getModJulianDate
     errorTypeName        = typeName
@@ -261,6 +263,7 @@ instance SafeData UniversalTime where
 instance SafeData UTCTime where
     kind                 = primitive
     getCopy (UTCValue v) = contain $ posixSecondsToUTCTime $ fromIntegral v
+    getCopy (NValue v)   = contain $ posixSecondsToUTCTime $ fromIntegral $ round v
     getCopy _            = error "UTCTime:getCopy: expecting UTCValue"
     putCopy              = contain . UTCValue . truncate . utcTimeToPOSIXSeconds
     errorTypeName        = typeName
@@ -268,6 +271,7 @@ instance SafeData UTCTime where
 instance SafeData NominalDiffTime where
     kind                 = primitive
     getCopy (UTCValue v) = contain $ fromIntegral v
+    getCopy (NValue v)   = contain $ fromIntegral $ round v
     getCopy _            = error "NominalDiffTime:getCopy: expecting UTCValue"
     putCopy              = contain . UTCValue . truncate
     errorTypeName        = typeName
@@ -275,6 +279,7 @@ instance SafeData NominalDiffTime where
 instance SafeData TimeOfDay where
     kind                 = primitive
     getCopy (UTCValue v) = contain $ timeToTimeOfDay $ picosecondsToDiffTime v
+    getCopy (NValue v)   = contain $ timeToTimeOfDay $ picosecondsToDiffTime $ round v
     getCopy _            = error "TimeOfDay:getCopy: expecting UTCValue"
     putCopy              = contain . UTCValue . truncate . timeOfDayToTime
     errorTypeName        = typeName
@@ -325,6 +330,7 @@ e12 = 1000000000000
 instance SafeData ClockTime where
     kind                    = primitive
     getCopy (UTCValue t)    = contain $ TOD (t `div` e12) (t - (t `div` e12))
+    getCopy (NValue t')     = contain $ TOD (t `div` e12) (t - (t `div` e12)) where t = round t'
     getCopy _               = error "ClockTime:getCopy: expecting UTCValue"
     putCopy (TOD secs pico) = contain $ UTCValue $ secs * e12 + pico
 
