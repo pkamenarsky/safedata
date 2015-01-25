@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, TypeFamilies, TypeSynonymInstances, FlexibleContexts, FlexibleInstances #-}
+{-# LANGUAGE DeriveDataTypeable, DeriveFunctor, GADTs, TypeFamilies, TypeSynonymInstances, FlexibleContexts, FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 {-# LANGUAGE CPP #-}
@@ -57,7 +57,7 @@ data Value = BValue Bool
 
            | Object String Cstr Int32 [(Key, Value)]
            | Array [Value]
-           deriving Show
+           deriving (Eq, Show, Typeable)
 
 
 -- | The central mechanism for dealing with version control.
@@ -293,7 +293,7 @@ instance Num (Version a) where
 --   correct, it is necessary to restrict access to 'getCopy' and 'putCopy'.
 --   This is where 'Contained' enters the picture. It allows you to put
 --   values in to a container but not to take them out again.
-newtype Contained a = Contained {unsafeUnPack :: a}
+newtype Contained a = Contained {unsafeUnPack :: a} deriving Functor
 
 -- | Place a value in an unbreakable container.
 contain :: a -> Contained a
